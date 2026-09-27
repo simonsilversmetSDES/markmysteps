@@ -25,7 +25,7 @@ import {
 } from '../lib/arc';
 import { airportByCode } from '../lib/airports';
 import { formatDate, formatDateRange } from '../lib/colors';
-import { PlaceSuggestion, searchPlaces } from '../lib/geocode';
+import { PlaceSuggestion, reversePlace, searchPlaces } from '../lib/geocode';
 import { StopSuggestions, type StaySuggestion } from './StopSuggestions';
 import { haptic } from '../lib/haptics';
 import { useExit } from '../lib/useExit';
@@ -56,6 +56,13 @@ interface TripPlannerProps {
   onPickConsumed: () => void;
   /** Ease the shared map to a searched place. */
   onFlyTo: (lng: number, lat: number) => void;
+  /**
+   * Where the pin on the shared map should stand: the place chosen for the
+   * new stop, or for the stop being edited. Null takes it away.
+   */
+  onPinChange?: (pin: { lat: number; lng: number } | null) => void;
+  /** "Aanduiden op kaart": bring the map into view and drop a pin to drag. */
+  onPlaceOnMap?: () => void;
   /** Guest view: the same itinerary, with nothing to press. */
   readOnly?: boolean;
   /**
@@ -83,6 +90,8 @@ export function TripPlanner({
   pickedCoords,
   onPickConsumed,
   onFlyTo,
+  onPinChange,
+  onPlaceOnMap,
   readOnly = false,
   onDrawTrain,
 }: TripPlannerProps) {
@@ -91,6 +100,28 @@ export function TripPlanner({
   const [newNights, setNewNights] = useState(2);
   const [newCountry, setNewCountry] = useState<string | undefined>();
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  /** The last search came back empty: time to offer the map instead. */
+  const [noResults, setNoResults] = useState(false);
+  /**
+   * Where the new stop goes. A place picked from the search brings its own
+   * spot; one pointed at on the map keeps its spot whatever you then call it.
+   */
+  const [pick, setPick] = useState<{ lat: number; lng: number; source: 'search' | 'map' } | null>(
+    null,
+  );
+  /** The stop whose name and place are open for editing, with its draft pin. */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPin, setEditPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [editCountry, setEditCountry] = useState<string | null>(null);
+  /** The stop whose day-trip panel is open, and the place being set for it. */
+  const [dayTripFor, setDayTripFor] = useState<string | null>(null);
+  const [dayPin, setDayPin] = useState<{ lat: number; lng: number } | null>(null);
+  const [dayCountry, setDayCountry] = useState<string | null>(null);
+  /** A name for the day trip from where its pin landed; only fills an empty field. */
+  const [daySuggestedName, setDaySuggestedName] = useState<string | null>(null);
+  /** Only the newest reverse lookup may write: a slow answer for a spot you
+   *  already moved away from must not overwrite the one for where you are. */
+  const lookupRef = useRef(0);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
@@ -166,13 +197,26 @@ export function TripPlanner({
 
   function onNameInput(value: string) {
     setNewName(value);
-    setNewCountry(undefined);
+    setNoResults(false);
+    // A place found by name goes with that name. Type something else and the
+    // spot goes too — otherwise "Brugge" would quietly land in Gent. A spot
+    // pointed at on the map stays: that is exactly the case of a place the
+    // search does not know by the name you are giving it.
+    if (pick?.source !== 'map') {
+      setNewCountry(undefined);
+      if (pick) setPick(null);
+    }
     if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current);
     searchTimerRef.current = window.setTimeout(() => {
       searchAbortRef.current?.abort();
       const controller = new AbortController();
       searchAbortRef.current = controller;
-      searchPlaces(value, controller.signal).then(setSuggestions).catch(() => undefined);
+      searchPlaces(value, controller.signal, { anyPlace: true })
+        .then((found) => {
+          setSuggestions(found);
+          setNoResults(found.length === 0 && value.trim().length >= 3);
+        })
+        .catch(() => undefined);
     }, 280);
   }
 
@@ -180,25 +224,88 @@ export function TripPlanner({
     setNewName(place.name);
     setNewCountry(place.countryCode);
     setSuggestions([]);
+    setNoResults(false);
     onFlyTo(place.longitude, place.latitude);
-    // Reuse the map-pick channel so the coordinate is attached to the new stop.
-    pickedForNext.current = { lat: place.latitude, lng: place.longitude };
+    setPick({ lat: place.latitude, lng: place.longitude, source: 'search' });
   }
 
-  // A suggestion carries its own coordinate; a map tap carries one too. Whichever
-  // came last wins for the next stop.
-  const pickedForNext = useRef<{ lat: number; lng: number } | null>(null);
-  const effectivePick = pickedCoords ?? pickedForNext.current;
+  /**
+   * Which country a spot on the map lies in, for the flag and the trip's
+   * country count, and a name for the new stop if it has none yet. Never
+   * overwrites a name you typed.
+   */
+  function lookUp(at: { lat: number; lng: number }, target: 'new' | 'edit' | 'day') {
+    const token = ++lookupRef.current;
+    void reversePlace(at.lat, at.lng).then((found) => {
+      if (token !== lookupRef.current || !found) return;
+      if (target === 'edit') {
+        setEditCountry(found.countryCode ?? null);
+        return;
+      }
+      if (target === 'day') {
+        setDayCountry(found.countryCode ?? null);
+        setDaySuggestedName(found.name);
+        return;
+      }
+      setNewCountry(found.countryCode);
+      if (found.name) setNewName((current) => (current.trim() ? current : found.name!));
+    });
+  }
+
+  // A tap on the shared map, or the pin dragged there, lands here as one
+  // event: it goes to the stop being edited if there is one, else to the day
+  // trip being added, else to the new stop.
+  const editingIdRef = useRef(editingId);
+  editingIdRef.current = editingId;
+  const dayTripForRef = useRef(dayTripFor);
+  dayTripForRef.current = dayTripFor;
+  useEffect(() => {
+    if (!pickedCoords || readOnly) return;
+    const at = { lat: pickedCoords.lat, lng: pickedCoords.lng };
+    onPickConsumed();
+    if (editingIdRef.current) {
+      setEditPin(at);
+      lookUp(at, 'edit');
+    } else if (dayTripForRef.current) {
+      setDayPin(at);
+      lookUp(at, 'day');
+    } else {
+      setPick({ ...at, source: 'map' });
+      setSuggestions([]);
+      lookUp(at, 'new');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedCoords]);
+
+  // A day-trip panel opens empty, and closing it forgets where it was pointing.
+  useEffect(() => {
+    lookupRef.current++;
+    setDayPin(null);
+    setDayCountry(null);
+    setDaySuggestedName(null);
+  }, [dayTripFor]);
+
+  // The pin follows whatever is being placed.
+  const pin = editingId ? editPin : dayTripFor ? dayPin : pick;
+  useEffect(() => {
+    onPinChange?.(pin ? { lat: pin.lat, lng: pin.lng } : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin?.lat, pin?.lng]);
+  useEffect(
+    () => () => onPinChange?.(null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
   async function addStop(event: FormEvent) {
     event.preventDefault();
     try {
       const body = {
         id: crypto.randomUUID(),
-        name: newName,
+        name: newName.trim(),
         nights: newNights,
-        latitude: effectivePick?.lat,
-        longitude: effectivePick?.lng,
+        latitude: pick?.lat,
+        longitude: pick?.lng,
         countryCode: newCountry,
       };
       const updated = await mutate(stopsPath, 'POST', body, (current) =>
@@ -209,10 +316,55 @@ export function TripPlanner({
       setNewNights(2);
       setNewCountry(undefined);
       setSuggestions([]);
-      pickedForNext.current = null;
-      onPickConsumed();
+      setNoResults(false);
+      setPick(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Stop toevoegen mislukt');
+    }
+  }
+
+  function startEditing(stop: PlannedStop) {
+    setDayTripFor(null);
+    setEditingId(stop.id);
+    const at =
+      stop.latitude !== null && stop.longitude !== null
+        ? { lat: stop.latitude, lng: stop.longitude }
+        : null;
+    setEditPin(at);
+    setEditCountry(stop.countryCode);
+    if (at) onFlyTo(at.lng, at.lat);
+  }
+
+  function stopEditing() {
+    lookupRef.current++;
+    setEditingId(null);
+    setEditPin(null);
+    setEditCountry(null);
+  }
+
+  /** A search result picked while editing moves the pin there. */
+  function pickEditPlace(place: PlaceSuggestion) {
+    lookupRef.current++;
+    setEditPin({ lat: place.latitude, lng: place.longitude });
+    setEditCountry(place.countryCode ?? null);
+    onFlyTo(place.longitude, place.latitude);
+  }
+
+  async function saveStopEdit(stop: PlannedStop, name: string) {
+    const data = {
+      name: name.trim(),
+      ...(editPin ? { latitude: editPin.lat, longitude: editPin.lng } : {}),
+      ...(editCountry ? { countryCode: editCountry } : {}),
+    };
+    try {
+      refresh(
+        await mutate(`${stopsPath}/${stop.id}`, 'PATCH', data, (current) =>
+          localUpdate(current, tripStart, stop.id, data),
+        ),
+      );
+      stopEditing();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Stop opslaan mislukt');
     }
   }
 
@@ -283,25 +435,32 @@ export function TripPlanner({
   const lastPending = lastPendingRef.current;
 
   // Which stop currently has its "add a day trip" panel expanded.
-  const [dayTripFor, setDayTripFor] = useState<string | null>(null);
 
   /** An excursion from `parent` and back the same day (Saltsjöbaden → Stockholm). */
-  async function addDayTrip(parent: PlannedStop, place: PlaceSuggestion, day: string) {
+  /** A search result picked in the day-trip panel moves its pin there. */
+  function pickDayPlace(place: PlaceSuggestion | null) {
+    lookupRef.current++;
+    setDayPin(place ? { lat: place.latitude, lng: place.longitude } : null);
+    setDayCountry(place?.countryCode ?? null);
+    if (place) onFlyTo(place.longitude, place.latitude);
+  }
+
+  async function addDayTrip(parent: PlannedStop, name: string, day: string) {
     try {
       const body = {
         id: crypto.randomUUID(),
-        name: place.name,
+        name: name.trim(),
         nights: 0,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        countryCode: place.countryCode,
+        latitude: dayPin?.lat,
+        longitude: dayPin?.lng,
+        countryCode: dayCountry ?? undefined,
         parentStopId: parent.id,
         dayTripDate: day,
       };
       refresh(
         await mutate(stopsPath, 'POST', body, (current) => localCreate(current, tripStart, body)),
       );
-      onFlyTo(place.longitude, place.latitude);
+      if (dayPin) onFlyTo(dayPin.lng, dayPin.lat);
       setDayTripFor(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dagtrip toevoegen mislukt');
@@ -828,7 +987,22 @@ export function TripPlanner({
                 <div className="stop-main">
                   <CityThumb name={stop.name} index={index} countryCode={stop.countryCode} />
                   <div className="stop-info">
-                    <strong>{stop.name}</strong>
+                    <span className="stop-name-row">
+                      <strong>{stop.name}</strong>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          className={`stop-edit-btn ${editingId === stop.id ? 'open' : ''}`}
+                          aria-label={`${stop.name} bewerken`}
+                          aria-expanded={editingId === stop.id}
+                          onClick={() =>
+                            editingId === stop.id ? stopEditing() : startEditing(stop)
+                          }
+                        >
+                          <Icon name="pencil" size={13} />
+                        </button>
+                      )}
+                    </span>
                     {/* One line: shortening the range is what keeps the weather
                         beside the dates, so the separator dot is never left
                         dangling at the start of a wrapped line. */}
@@ -881,7 +1055,10 @@ export function TripPlanner({
                       <button
                         type="button"
                         className={`daytrip-btn ${dayTripFor === stop.id ? 'open' : ''}`}
-                        onClick={() => setDayTripFor(dayTripFor === stop.id ? null : stop.id)}
+                        onClick={() => {
+                          if (editingId) stopEditing();
+                          setDayTripFor(dayTripFor === stop.id ? null : stop.id);
+                        }}
                       >
                         <Icon name="plus" size={13} />
                         Dagtrip
@@ -889,17 +1066,49 @@ export function TripPlanner({
                     )}
                   </div>
                 </div>
+                {!readOnly && (
+                  <StopEdit
+                    stop={stop}
+                    open={editingId === stop.id}
+                    pin={editingId === stop.id ? editPin : null}
+                    countryCode={editingId === stop.id ? editCountry : null}
+                    onPlaceOnMap={onPlaceOnMap}
+                    onPickPlace={pickEditPlace}
+                    onCancel={stopEditing}
+                    onSave={(name) => void saveStopEdit(stop, name)}
+                  />
+                )}
                 <DayTrips
                   parent={stop}
                   dayTrips={dayTripsByParent.get(stop.id) ?? []}
                   open={dayTripFor === stop.id}
                   removingId={removingId}
                   onClose={() => setDayTripFor(null)}
-                  onAdd={(place, date) => addDayTrip(stop, place, date)}
+                  onAdd={(name, date) => addDayTrip(stop, name, date)}
                   onDate={(trip, date) => setDayTripDate(trip, date)}
                   onRemove={removeStop}
-                  onFlyTo={onFlyTo}
                   readOnly={readOnly}
+                  pin={dayTripFor === stop.id ? dayPin : null}
+                  countryCode={dayTripFor === stop.id ? dayCountry : null}
+                  suggestedName={dayTripFor === stop.id ? daySuggestedName : null}
+                  onPickPlace={pickDayPlace}
+                  onPlaceOnMap={onPlaceOnMap}
+                  editingId={editingId}
+                  onEdit={(trip) =>
+                    editingId === trip.id ? stopEditing() : startEditing(trip)
+                  }
+                  renderEdit={(trip) => (
+                    <StopEdit
+                      stop={trip}
+                      open={editingId === trip.id}
+                      pin={editingId === trip.id ? editPin : null}
+                      countryCode={editingId === trip.id ? editCountry : null}
+                      onPlaceOnMap={onPlaceOnMap}
+                      onPickPlace={pickEditPlace}
+                      onCancel={stopEditing}
+                      onSave={(name) => void saveStopEdit(trip, name)}
+                    />
+                  )}
                 />
               </div>
               </SwipeToDelete>
@@ -925,7 +1134,7 @@ export function TripPlanner({
             id="st-name"
             required
             autoComplete="off"
-            placeholder="Zoek een stad, bijv. Hanoi"
+            placeholder="Zoek een plaats, of typ zelf een naam"
             value={newName}
             onChange={(e) => onNameInput(e.target.value)}
           />
@@ -944,6 +1153,15 @@ export function TripPlanner({
               ))}
             </ul>
           )}
+          {noResults && !pick && (
+            <p className="stop-notfound">
+              Niet gevonden? Houd de naam zoals je hem typte en{' '}
+              <button type="button" className="link-btn" onClick={onPlaceOnMap}>
+                duid de plek aan op de kaart
+              </button>
+              .
+            </p>
+          )}
         </div>
         <div className="field">
           <label htmlFor="st-nights">Nachten</label>
@@ -956,11 +1174,17 @@ export function TripPlanner({
             onChange={(e) => setNewNights(Number(e.target.value))}
           />
         </div>
-        <span className="muted">
-          {effectivePick
-            ? `Locatie: ${effectivePick.lat.toFixed(4)}, ${effectivePick.lng.toFixed(4)}`
-            : 'Tik op de kaart voor de locatie (optioneel)'}
-        </span>
+        <PlaceLine
+          pin={pick}
+          countryCode={newCountry ?? null}
+          fromSearch={pick?.source === 'search'}
+          onPlaceOnMap={onPlaceOnMap}
+          onClear={() => {
+            lookupRef.current++;
+            setPick(null);
+            setNewCountry(undefined);
+          }}
+        />
         <button className="btn btn-primary">Stop toevoegen</button>
       </form>
       )}
@@ -1329,23 +1553,43 @@ function DayTrips({
   onAdd,
   onDate,
   onRemove,
-  onFlyTo,
   readOnly,
+  pin,
+  countryCode,
+  suggestedName,
+  onPickPlace,
+  onPlaceOnMap,
+  editingId,
+  onEdit,
+  renderEdit,
 }: {
   parent: PlannedStop;
   dayTrips: PlannedStop[];
   open: boolean;
   removingId: string | null;
   onClose: () => void;
-  onAdd: (place: PlaceSuggestion, day: string) => void;
+  /** The name as typed or picked; the place comes from the pin. */
+  onAdd: (name: string, day: string) => void;
   onDate: (dayTrip: PlannedStop, day: string) => void;
   onRemove: (stop: PlannedStop) => void;
-  onFlyTo: (lng: number, lat: number) => void;
   readOnly?: boolean;
+  /** Where the new day trip's pin stands, and the country under it. */
+  pin: { lat: number; lng: number } | null;
+  countryCode: string | null;
+  /** A name for where the pin was dropped; fills the field only while empty. */
+  suggestedName: string | null;
+  /** A search result chosen (the pin moves there), or null to take it away. */
+  onPickPlace: (place: PlaceSuggestion | null) => void;
+  onPlaceOnMap?: () => void;
+  /** The stop or day trip whose name and place are open for editing. */
+  editingId: string | null;
+  onEdit: (dayTrip: PlannedStop) => void;
+  renderEdit: (dayTrip: PlannedStop) => ReactNode;
 }) {
   const [query, setQuery] = useState('');
   const [sugg, setSugg] = useState<PlaceSuggestion[]>([]);
   const [picked, setPicked] = useState<PlaceSuggestion | null>(null);
+  const [notFound, setNotFound] = useState(false);
   // Defaults to the day you arrive at the stop — the usual answer, and it opens
   // the calendar on the right month straight away.
   const [day, setDay] = useState(parent.arrivalDate.slice(0, 10));
@@ -1360,6 +1604,7 @@ function DayTrips({
     setQuery('');
     setSugg([]);
     setPicked(null);
+    setNotFound(false);
     setDay(parent.arrivalDate.slice(0, 10));
     // After the 0.32s expander has settled, so the field is where it will stay
     // when the keyboard-scroll handler measures it.
@@ -1367,15 +1612,42 @@ function DayTrips({
     return () => window.clearTimeout(t);
   }, [open, parent.arrivalDate]);
 
+  // A name for where the pin landed, while there is none of your own yet.
+  useEffect(() => {
+    if (open && suggestedName) setQuery((current) => (current.trim() ? current : suggestedName));
+  }, [open, suggestedName]);
+
+  // The pin still where the picked result put it? Then it is that place.
+  const fromSearch =
+    picked !== null && pin !== null && pin.lat === picked.latitude && pin.lng === picked.longitude;
+
+  // A spot pointed at on the map answers the search; the list can go.
+  useEffect(() => {
+    if (pin && !fromSearch) {
+      setSugg([]);
+      setNotFound(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin?.lat, pin?.lng]);
+
   function onInput(value: string) {
     setQuery(value);
+    setNotFound(false);
+    // Same rule as a new stop: a found place goes with its name, a spot you
+    // pointed at on the map stays whatever you call it.
+    if (fromSearch) onPickPlace(null);
     setPicked(null);
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
       abort.current?.abort();
       const controller = new AbortController();
       abort.current = controller;
-      searchPlaces(value, controller.signal).then(setSugg).catch(() => undefined);
+      searchPlaces(value, controller.signal, { anyPlace: true })
+        .then((found) => {
+          setSugg(found);
+          setNotFound(found.length === 0 && value.trim().length >= 3);
+        })
+        .catch(() => undefined);
     }, 280);
   }
 
@@ -1383,7 +1655,8 @@ function DayTrips({
     setPicked(place);
     setQuery(place.name);
     setSugg([]);
-    onFlyTo(place.longitude, place.latitude);
+    setNotFound(false);
+    onPickPlace(place);
   }
 
   return (
@@ -1403,7 +1676,20 @@ function DayTrips({
                     className="daytrip-thumb"
                   />
                   <div className="daytrip-info">
-                    <strong>{trip.name}</strong>
+                    <span className="stop-name-row">
+                      <strong>{trip.name}</strong>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          className={`stop-edit-btn ${editingId === trip.id ? 'open' : ''}`}
+                          aria-label={`${trip.name} bewerken`}
+                          aria-expanded={editingId === trip.id}
+                          onClick={() => onEdit(trip)}
+                        >
+                          <Icon name="pencil" size={12} />
+                        </button>
+                      )}
+                    </span>
                     <span className="muted daytrip-meta">
                       {readOnly ? (
                         formatDate(trip.arrivalDate)
@@ -1437,6 +1723,7 @@ function DayTrips({
                     </button>
                   )}
                 </div>
+                {!readOnly && renderEdit(trip)}
             </li>
           ))}
         </ul>
@@ -1472,6 +1759,25 @@ function DayTrips({
                 ))}
               </ul>
             )}
+            {notFound && !pin && (
+              <p className="stop-notfound">
+                Niet gevonden? Houd de naam zoals je hem typte en{' '}
+                <button type="button" className="link-btn" onClick={onPlaceOnMap}>
+                  duid de plek aan op de kaart
+                </button>
+                .
+              </p>
+            )}
+            <PlaceLine
+              pin={pin}
+              countryCode={countryCode}
+              fromSearch={fromSearch}
+              onPlaceOnMap={onPlaceOnMap}
+              onClear={() => {
+                setPicked(null);
+                onPickPlace(null);
+              }}
+            />
             <div className="daytrip-when">
               <DateField
                 label="Welke dag?"
@@ -1487,8 +1793,8 @@ function DayTrips({
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!picked || !day}
-                onClick={() => picked && onAdd(picked, day)}
+                disabled={!query.trim() || !day}
+                onClick={() => onAdd(query, day)}
               >
                 Toevoegen
               </button>
@@ -1798,6 +2104,208 @@ function ModeMenu({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Where a stop is going to be, said in words, with the way to set it by hand.
+ *
+ * The map tap for a stop's place used to be a grey line of coordinates under
+ * the form: there was no pin to see, so nobody knew the tap had done anything,
+ * or that it could be done at all. Now it is a button, and what it chose is a
+ * pin on the map you can drag and a line here you can take back.
+ */
+function PlaceLine({
+  pin,
+  countryCode,
+  fromSearch,
+  onPlaceOnMap,
+  onClear,
+}: {
+  pin: { lat: number; lng: number } | null;
+  countryCode: string | null;
+  fromSearch: boolean;
+  onPlaceOnMap?: () => void;
+  onClear?: () => void;
+}) {
+  return (
+    <div className={`place-line ${pin ? 'has-pin' : ''}`}>
+      <span className="place-line-text">
+        {pin ? (
+          <>
+            {countryCode ? <Flag code={countryCode} size={15} /> : <Icon name="pin" size={15} />}
+            {fromSearch ? 'Plek uit de zoekresultaten' : 'Plek aangeduid op de kaart'}
+            <small>· sleep de pin om bij te stellen</small>
+          </>
+        ) : (
+          <>
+            <Icon name="pin" size={15} />
+            Nog geen plek (optioneel)
+          </>
+        )}
+      </span>
+      <span className="place-line-actions">
+        {onPlaceOnMap && (
+          <button type="button" className="btn btn-ghost place-line-btn" onClick={onPlaceOnMap}>
+            <Icon name="pin" size={14} />
+            {pin ? 'Toon op kaart' : 'Aanduiden op kaart'}
+          </button>
+        )}
+        {pin && onClear && (
+          <button
+            type="button"
+            className="place-line-clear"
+            aria-label="Plek wissen"
+            onClick={onClear}
+          >
+            <Icon name="close" size={13} />
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * A stop's name and place, changed in place.
+ *
+ * The search does not know every town by the name a traveller uses, and it
+ * sometimes picks the wrong one of two. Deleting the stop and adding it again
+ * lost its nights, its day trips and its spot in the route; this keeps all of
+ * that and changes only what was wrong. It unfolds inside the card rather than
+ * over the page, so the map stays free to tap and the pin free to drag.
+ */
+function StopEdit({
+  stop,
+  open,
+  pin,
+  countryCode,
+  onPlaceOnMap,
+  onPickPlace,
+  onCancel,
+  onSave,
+}: {
+  stop: PlannedStop;
+  open: boolean;
+  pin: { lat: number; lng: number } | null;
+  countryCode: string | null;
+  onPlaceOnMap?: () => void;
+  /** A search result chosen: the pin moves there. */
+  onPickPlace: (place: PlaceSuggestion) => void;
+  onCancel: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [name, setName] = useState(stop.name);
+  const [sugg, setSugg] = useState<PlaceSuggestion[]>([]);
+  const [picked, setPicked] = useState<PlaceSuggestion | null>(null);
+  const [notFound, setNotFound] = useState(false);
+  const timer = useRef<number | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setName(stop.name);
+    setSugg([]);
+    setPicked(null);
+    setNotFound(false);
+    const t = window.setTimeout(() => inputRef.current?.select(), 340);
+    return () => window.clearTimeout(t);
+  }, [open, stop.name]);
+
+  // Whether the pin still stands where the picked search result put it: move
+  // it on the map and it is your own spot again.
+  const fromSearch =
+    picked !== null && pin !== null && pin.lat === picked.latitude && pin.lng === picked.longitude;
+
+  function onInput(value: string) {
+    setName(value);
+    setPicked(null);
+    setNotFound(false);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      abort.current?.abort();
+      const controller = new AbortController();
+      abort.current = controller;
+      searchPlaces(value, controller.signal, { anyPlace: true })
+        .then((found) => {
+          setSugg(found);
+          setNotFound(found.length === 0 && value.trim().length >= 3);
+        })
+        .catch(() => undefined);
+    }, 280);
+  }
+
+  function pick(place: PlaceSuggestion) {
+    setPicked(place);
+    setName(place.name);
+    setSugg([]);
+    setNotFound(false);
+    onPickPlace(place);
+  }
+
+  return (
+    <div className="daytrip-panel stop-edit" data-open={open}>
+      <div className="daytrip-panel-inner">
+        <form
+          className="daytrip-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (name.trim()) onSave(name);
+          }}
+        >
+          <label className="stop-edit-label" htmlFor={`stop-edit-${stop.id}`}>
+            Naam
+          </label>
+          <div className="daytrip-search searchbox">
+            <Icon name="pencil" size={15} />
+            <input
+              id={`stop-edit-${stop.id}`}
+              ref={inputRef}
+              value={name}
+              maxLength={120}
+              autoComplete="off"
+              placeholder="Naam van de stop"
+              onChange={(e) => onInput(e.target.value)}
+            />
+          </div>
+          {sugg.length > 0 && (
+            <ul className="daytrip-suggestions">
+              {sugg.map((place, i) => (
+                <li key={i}>
+                  <button type="button" onClick={() => pick(place)}>
+                    <Flag code={place.countryCode} size={17} />
+                    <span>
+                      <strong>{place.name}</strong>
+                      {place.region && <small> {place.region}</small>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {notFound && (
+            <p className="stop-notfound">
+              Niet gevonden — de naam mag zo blijven. Zet de plek zelf op de kaart.
+            </p>
+          )}
+          <PlaceLine
+            pin={pin}
+            countryCode={countryCode}
+            fromSearch={fromSearch}
+            onPlaceOnMap={onPlaceOnMap}
+          />
+          <div className="daytrip-actions">
+            <button type="button" className="btn btn-ghost" onClick={onCancel}>
+              Annuleren
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={!name.trim()}>
+              Opslaan
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

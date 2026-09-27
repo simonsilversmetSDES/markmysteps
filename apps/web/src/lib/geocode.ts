@@ -27,8 +27,11 @@ interface PhotonFeature {
   };
 }
 
-export async function searchPlaces(query: string, signal?: AbortSignal): Promise<PlaceSuggestion[]> {
-  if (query.trim().length < 2) return [];
+async function photonSearch(
+  query: string,
+  signal: AbortSignal | undefined,
+  placesOnly: boolean,
+): Promise<PhotonFeature[]> {
   const url = new URL('https://photon.komoot.io/api/');
   url.searchParams.set('q', query);
   url.searchParams.set('limit', '6');
@@ -36,18 +39,43 @@ export async function searchPlaces(query: string, signal?: AbortSignal): Promise
   // ("Marrakech ⵎⵔⴰⴽⵛ مراكش"); 'en' gives clean single names.
   url.searchParams.set('lang', 'en');
   // Bias towards cities/towns — that's what trip stops usually are.
-  url.searchParams.append('osm_tag', 'place');
-
+  if (placesOnly) url.searchParams.append('osm_tag', 'place');
   const res = await fetch(url, { signal });
   if (!res.ok) return [];
   const data = (await res.json()) as { features: PhotonFeature[] };
+  return data.features;
+}
+
+/**
+ * Places for a typed name.
+ *
+ * Cities, towns and villages only, unless `anyPlace` is set: then those still
+ * come first, and after them whatever else carries the name — a campsite, a
+ * hotel, a hut, a sight. A stop is not always a town, and a search that only
+ * knew towns left no way to add the farm you actually slept at.
+ */
+export async function searchPlaces(
+  query: string,
+  signal?: AbortSignal,
+  { anyPlace = false }: { anyPlace?: boolean } = {},
+): Promise<PlaceSuggestion[]> {
+  if (query.trim().length < 2) return [];
+  const [places, others] = await Promise.all([
+    photonSearch(query, signal, true),
+    // A failing second lookup must not cost the towns the first one found.
+    anyPlace ? photonSearch(query, signal, false).catch(() => []) : Promise.resolve([]),
+  ]);
 
   const seen = new Set<string>();
   const suggestions: PlaceSuggestion[] = [];
-  for (const feature of data.features) {
+  for (const feature of [...places, ...others]) {
     const p = feature.properties;
     if (!p.name) continue;
-    const region = [p.state, p.country].filter(Boolean).join(', ');
+    // Something that is not a town says which town it is in.
+    const town = p.city ?? p.locality ?? p.district;
+    const region = [town && town !== p.name ? town : p.state, p.country]
+      .filter(Boolean)
+      .join(', ');
     const key = `${p.name}|${region}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -58,6 +86,7 @@ export async function searchPlaces(query: string, signal?: AbortSignal): Promise
       latitude: feature.geometry.coordinates[1],
       longitude: feature.geometry.coordinates[0],
     });
+    if (suggestions.length >= 8) break;
   }
   return suggestions;
 }
@@ -202,6 +231,33 @@ export async function reversePlaceName(lat: number, lon: number): Promise<string
   } catch {
     // Not remembered: ask again next time rather than deciding this place has
     // no name because the network had a bad second.
+    return null;
+  }
+}
+
+/**
+ * What a point on the map is: a name to offer and the country it lies in.
+ *
+ * For a place that was pointed at rather than found. The country is what puts
+ * a flag on the stop and counts it towards the trip's countries; the name is
+ * only ever a suggestion for an empty field. Null when the geocoder is out of
+ * reach, which the caller treats as "no suggestion", never as an error.
+ */
+export async function reversePlace(
+  lat: number,
+  lon: number,
+): Promise<{ name: string | null; countryCode?: string } | null> {
+  try {
+    const p = (await photonReverse(lat, lon, true)) ?? (await photonReverse(lat, lon, false));
+    if (!p) return null;
+    // A town or village is its own answer. Anything else — a neighbourhood, a
+    // house, a road — is named after the town it lies in: "De Assels" is a
+    // corner of Gent, and the stop is Gent.
+    return {
+      name: p.type === 'city' ? (p.name ?? null) : (p.city ?? p.locality ?? p.name ?? null),
+      countryCode: p.countrycode?.toUpperCase(),
+    };
+  } catch {
     return null;
   }
 }

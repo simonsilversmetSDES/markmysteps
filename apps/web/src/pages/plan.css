@@ -1745,3 +1745,132 @@
      top of the pin for the city they belong to. */
   z-index: 1;
 }
+
+/* ---------- Choosing a stop's place by hand ---------- */
+
+/* The name and its pencil on one line; the pencil is small and quiet until
+   you reach for it, like the day-trip button beside the nights. */
+.stop-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.stop-name-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stop-edit-btn {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-faint);
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.stop-edit-btn:hover,
+.stop-edit-btn.open {
+  color: var(--accent-ink);
+  background: var(--paper-sunken);
+}
+
+.stop-edit-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* Where the stop will be: a flag or a pin, what chose it, and the button to
+   set it by hand. */
+.place-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  color: var(--ink-faint);
+}
+
+.place-line-text {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.place-line.has-pin .place-line-text {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.place-line-text small {
+  font-weight: 500;
+  color: var(--ink-faint);
+}
+
+.place-line-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.place-line-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.place-line-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: none;
+  color: var(--ink-faint);
+}
+
+.place-line-clear:hover {
+  background: var(--paper-sunken);
+  color: var(--ink);
+}
+
+/* "Niet gevonden?": said once, under the field, with the way out in it. */
+.stop-notfound {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.link-btn {
+  display: inline;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* The pin on the shared map: it is there to be dragged. */
+.plan-pin {
+  cursor: grab;
+  z-index: 60;
+}
+
+.plan-pin:active {
+  cursor: grabbing;
+}

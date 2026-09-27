@@ -119,6 +119,8 @@ export function TripDetailPage() {
   const [tab, setTab] = useState<'timeline' | 'plan'>('timeline');
   const planPushedRef = useRef(false);
   const [planPick, setPlanPick] = useState<{ lat: number; lng: number } | null>(null);
+  /** Where the planner wants its pin: the place being chosen for a stop. */
+  const [planPin, setPlanPin] = useState<{ lat: number; lng: number } | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
   const [notes, setNotes] = useState<TripNote[]>([]);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
@@ -985,6 +987,8 @@ export function TripDetailPage() {
           liveFixes={liveFixes}
           selfUserId={user?.id}
           onReady={(api) => (mapApiRef.current = api)}
+          pin={tab === 'plan' && canEdit ? planPin : null}
+          onPinMove={(at) => setPlanPick({ lat: at.lat, lng: at.lng })}
         />
 
         {/* Where you are, in the corner nearest your thumb.
@@ -1213,6 +1217,19 @@ export function TripDetailPage() {
             pickedCoords={planPick}
             onPickConsumed={() => setPlanPick(null)}
             onFlyTo={(lng, lat) => mapApiRef.current?.flyTo(lng, lat)}
+            onPinChange={setPlanPin}
+            onPlaceOnMap={() => {
+              // On a phone the map is up behind the sheet: scroll back to it.
+              scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              if (planPin) {
+                mapApiRef.current?.flyTo(planPin.lng, planPin.lat, 14);
+                return;
+              }
+              // No spot yet: a pin in the middle of what you see, to drag
+              // where it belongs (or tap the map where it should go).
+              const at = mapApiRef.current?.center();
+              if (at) setPlanPick({ lat: at.lat, lng: at.lng });
+            }}
             readOnly={!canEdit}
             onDrawTrain={(leg) => {
               trainGapRef.current = leg.at;

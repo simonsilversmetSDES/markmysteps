@@ -73,6 +73,12 @@ interface TripMapProps {
    * the trip's own bounds would zoom straight back out to the whole trip.
    */
   autoFit?: boolean;
+  /**
+   * A draggable pin: the place being chosen for a stop in the planner. Absent
+   * or null draws nothing. Dragging it reports where it was let go.
+   */
+  pin?: { lat: number; lng: number } | null;
+  onPinMove?: (lngLat: { lng: number; lat: number }) => void;
 }
 
 export interface TripMapApi {
@@ -91,6 +97,8 @@ export interface TripMapApi {
    * just become a different, much shorter line, and the light says which one.
    */
   glowRoutes: () => void;
+  /** The middle of what you can see of the map (the sheet's part left out). */
+  center: () => { lng: number; lat: number };
 }
 
 export function TripMap({
@@ -113,6 +121,8 @@ export function TripMap({
   onReady,
   autoFit = true,
   onSelfClick,
+  pin,
+  onPinMove,
 }: TripMapProps) {
   // Read from a marker listener that is only attached once.
   const onSelfClickRef = useRef(onSelfClick);
@@ -340,6 +350,14 @@ export function TripMap({
         fitSafely(map, bounds, tripPadding(hiddenBottomRef.current), TRIP_MAX_ZOOM, 700);
       },
       glowRoutes: () => runGlow(map, glowLinesRef.current),
+      center: () => {
+        const canvas = map.getCanvas();
+        const { lng, lat } = map.unproject([
+          canvas.clientWidth / 2,
+          (canvas.clientHeight - hiddenBottomRef.current) / 2,
+        ]);
+        return { lng, lat };
+      },
     });
 
     // Keep the canvas matched to its container. The bottom-sheet layout
@@ -884,6 +902,41 @@ export function TripMap({
       );
     }
   }, [waypoints]);
+
+  // The planner's pin. One marker, moved rather than rebuilt, so dragging it
+  // and then tapping elsewhere does not flicker.
+  const pinMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const onPinMoveRef = useRef(onPinMove);
+  onPinMoveRef.current = onPinMove;
+  const pinLat = pin?.lat;
+  const pinLng = pin?.lng;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (pinLat === undefined || pinLng === undefined) {
+      pinMarkerRef.current?.remove();
+      pinMarkerRef.current = null;
+      return;
+    }
+    let marker = pinMarkerRef.current;
+    if (!marker) {
+      marker = new maplibregl.Marker({ color: '#e8613c', draggable: true });
+      marker.getElement().classList.add('plan-pin');
+      marker.getElement().setAttribute('aria-label', 'Gekozen plek, versleepbaar');
+      marker.on('dragend', () => {
+        const at = pinMarkerRef.current?.getLngLat();
+        if (at) onPinMoveRef.current?.({ lng: at.lng, lat: at.lat });
+      });
+      pinMarkerRef.current = marker;
+    }
+    marker.setLngLat([pinLng, pinLat]).addTo(map);
+  }, [pinLat, pinLng]);
+  useEffect(
+    () => () => {
+      pinMarkerRef.current?.remove();
+    },
+    [],
+  );
 
   return (
     <div
