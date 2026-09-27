@@ -1,0 +1,173 @@
+/* Sync and select, one row above the timeline: small, because the photos
+   are the page and this is only how they are looked after. */
+.photo-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.photo-tools-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+}
+
+.photo-tools-hint,
+.photo-tools-msg {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.photo-tools-msg {
+  color: var(--ink-soft);
+  animation: fadeIn 0.2s var(--ease);
+}
+
+.spin {
+  animation: photoToolsSpin 0.9s linear infinite;
+}
+
+@keyframes photoToolsSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Picking photos ---------- */
+
+.timeline-photo.selectable {
+  cursor: pointer;
+}
+
+/* Someone else's photo, on a trip that is not yours: there, but not yours to
+   take out. */
+.timeline-photo.unselectable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.timeline-photo.selectable .timeline-img {
+  transition: transform 0.16s var(--ease), filter 0.16s var(--ease);
+}
+
+.timeline-photo.selected .timeline-img {
+  transform: scale(0.9);
+  filter: brightness(0.75);
+}
+
+.timeline-photo.selected {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* The tick: an empty ring until picked, then filled. */
+.timeline-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgb(0 0 0 / 0.25);
+  color: transparent;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  pointer-events: none;
+}
+
+.timeline-photo.selected .timeline-check {
+  background: var(--accent);
+  color: #fff;
+}
+
+.timeline-select-day {
+  text-transform: none;
+  margin-left: auto;
+  align-self: center;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: var(--paper-sunken);
+  color: var(--ink-soft);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.timeline-select-day:hover {
+  color: var(--accent-ink);
+}
+
+/* What is picked, and the one thing to do with it. Where the undo pill sits,
+   because that is what takes its place once the photos are out. */
+.photo-select-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 60;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: min(94vw, 480px);
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-l);
+  animation: photoBarIn 0.24s var(--ease);
+}
+
+.photo-select-bar.leaving {
+  animation: photoBarOut 0.22s var(--ease) forwards;
+}
+
+@keyframes photoBarIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+}
+
+@keyframes photoBarOut {
+  to {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+}
+
+.photo-select-count {
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.photo-select-clear {
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.photo-select-clear:hover {
+  background: var(--paper-sunken);
+}
+
+.photo-select-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}

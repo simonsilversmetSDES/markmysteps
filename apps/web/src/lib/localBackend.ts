@@ -968,6 +968,14 @@ route('GET', '/trips/:id/members', async () => [selfMember()]);
 route('POST', '/trips/:id/members', async () => {
   throw new LocalUnsupported('Reisgenoten toevoegen');
 });
+// Taking photos out needs somewhere to remember that they are out, or the next
+// pull from the gallery brings them straight back; the phone has no such list.
+route('POST', '/trips/:id/media/remove', async () => {
+  throw new LocalUnsupported("Foto's uit een reis halen");
+});
+route('POST', '/trips/:id/media/restore', async () => {
+  throw new LocalUnsupported("Foto's terugzetten");
+});
 /**
  * Pulls the trip's photos out of the phone's own library.
  *

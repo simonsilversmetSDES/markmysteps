@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Headers,
@@ -13,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Throttle } from '@nestjs/throttler';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsString, IsUUID, MaxLength } from 'class-validator';
 import type { Response as ExpressResponse } from 'express';
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
@@ -26,6 +28,23 @@ import { ImmichSyncService, SyncResult } from '../immich/immich-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripsService } from '../trips/trips.service';
 import { MediaItem, MediaService } from './media.service';
+
+class RemoveMediaDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ids!: string[];
+}
+
+class RestoreMediaDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  immichAssetIds!: string[];
+}
 
 interface VideoTokenPayload {
   scope: 'media-video';
@@ -84,6 +103,34 @@ export class MediaController {
   ): Promise<SyncResult> {
     await this.trips.getForEditor(tripId, user.sub);
     return this.sync.syncTrip(tripId);
+  }
+
+  /**
+   * Takes photos out of this trip. Immich is not touched: the photos stay in
+   * the library, the trip stops showing them, and later syncs skip them.
+   */
+  @Post('trips/:tripId/media/remove')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  removeMedia(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Body() dto: RemoveMediaDto,
+  ): Promise<{ removed: number; removedIds: string[] }> {
+    return this.media.removeFromTrip(tripId, user.sub, dto.ids);
+  }
+
+  /** Undo for the above: forget the exclusions and sync them back in. */
+  @Post('trips/:tripId/media/restore')
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  async restoreMedia(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Body() dto: RestoreMediaDto,
+  ): Promise<{ restored: number }> {
+    const cleared = await this.media.clearExclusions(tripId, user.sub, dto.immichAssetIds);
+    if (cleared === 0) return { restored: 0 };
+    const result = await this.sync.syncTrip(tripId);
+    return { restored: result.assetsAdded };
   }
 
   /**

@@ -114,7 +114,19 @@ export class ImmichSyncService {
         result.usersSynced++;
         result.assetsFound += assets.length;
 
+        // Photos taken out of this trip by hand stay out: Immich still has
+        // them, and that is exactly why they would otherwise come back.
+        const excluded = new Set(
+          (
+            await this.prisma.mediaExclusion.findMany({
+              where: { tripId, userId },
+              select: { immichAssetId: true },
+            })
+          ).map((e) => e.immichAssetId),
+        );
+
         for (const asset of assets) {
+          if (excluded.has(asset.id)) continue;
           const { count } = await this.prisma.mediaRef.createMany({
             data: [
               {

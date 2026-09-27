@@ -61,6 +61,7 @@ model User {
   ownedTrips       Trip[]
   tripMemberships  TripMember[]
   mediaRefs        MediaRef[]
+  mediaExclusions  MediaExclusion[]
   locationPoints   LocationPoint[]
   notes            TripNote[]
   notifications    Notification[]   @relation("NotificationRecipient")
@@ -116,6 +117,7 @@ model Trip {
 
   members        TripMember[]
   mediaRefs      MediaRef[]
+  mediaExclusions MediaExclusion[]
   locationPoints LocationPoint[]
   stops          Stop[]
   shareLinks     ShareLink[]
@@ -426,6 +428,23 @@ model LocationPoint {
 /// Reference to a photo/video that lives in Immich. MarkMySteps never stores
 /// the actual media file — only the asset id plus the metadata needed to
 /// place it on the map and timeline.
+/// A photo taken out of a trip by hand. Immich keeps it; the trip stops
+/// showing it, and the sync skips it from then on instead of bringing it
+/// straight back. Keyed on the Immich asset, not on the MediaRef, because the
+/// MediaRef is gone the moment the photo is taken out.
+model MediaExclusion {
+  tripId        String   @db.Uuid
+  trip          Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  /// Whose Immich library the photo lives in.
+  userId        String   @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  immichAssetId String
+  createdAt     DateTime @default(now())
+
+  @@id([tripId, userId, immichAssetId])
+  @@map("media_exclusions")
+}
+
 model MediaRef {
   id            String   @id @default(uuid()) @db.Uuid
   tripId        String   @db.Uuid

@@ -37,6 +37,15 @@ interface TimelineProps {
   onSaveNote?: (day: string, body: string) => Promise<void>;
   onDeleteNote?: (noteId: string) => Promise<void>;
   stops?: TimelineStop[];
+  /**
+   * Picking photos instead of opening them, to take them out of the trip.
+   * `canSelect` says which ones may be picked (your own, or all of them for
+   * the trip's owner); the rest stay visible but do nothing.
+   */
+  selecting?: boolean;
+  selected?: Set<string>;
+  canSelect?: (item: MediaItem) => boolean;
+  onSelectionChange?: (ids: string[], on: boolean) => void;
 }
 
 export function Timeline({
@@ -51,6 +60,10 @@ export function Timeline({
   onSaveNote,
   onDeleteNote,
   stops = [],
+  selecting = false,
+  selected,
+  canSelect = () => true,
+  onSelectionChange,
 }: TimelineProps) {
   // Resolve a day's location: prefer the planned stop covering that day,
   // else the coordinates of the first photo taken that day.
@@ -189,6 +202,21 @@ export function Timeline({
                 </span>
               )}
             </span>
+            {selecting &&
+              (() => {
+                const pickable = items.filter(canSelect).map((m) => m.id);
+                if (pickable.length === 0) return null;
+                const all = pickable.every((id) => selected?.has(id));
+                return (
+                  <button
+                    type="button"
+                    className="timeline-select-day"
+                    onClick={() => onSelectionChange?.(pickable, !all)}
+                  >
+                    {all ? 'Dag deselecteren' : 'Hele dag'}
+                  </button>
+                );
+              })()}
           </h3>
 
           {((notesByDay.get(day)?.length ?? 0) > 0 || editingDay === day) &&
@@ -211,9 +239,15 @@ export function Timeline({
             {(item) => (
               <figure
                 data-media-id={item.id}
-                className="timeline-photo"
-                onClick={() => onPhotoClick?.(item)}
-                role={onPhotoClick ? 'button' : undefined}
+                className={`timeline-photo ${
+                  selecting ? (canSelect(item) ? 'selectable' : 'unselectable') : ''
+                } ${selecting && selected?.has(item.id) ? 'selected' : ''}`}
+                onClick={() => {
+                  if (!selecting) return onPhotoClick?.(item);
+                  if (canSelect(item)) onSelectionChange?.([item.id], !selected?.has(item.id));
+                }}
+                role={onPhotoClick || selecting ? 'button' : undefined}
+                aria-pressed={selecting && canSelect(item) ? !!selected?.has(item.id) : undefined}
               >
                 <AuthImage
                   // A panorama runs the full width of the screen on a row of
@@ -240,6 +274,11 @@ export function Timeline({
                 {item.assetType === 'VIDEO' && (
                   <span className="timeline-video">
                     <Icon name="play" size={22} />
+                  </span>
+                )}
+                {selecting && canSelect(item) && (
+                  <span className="timeline-check" aria-hidden="true">
+                    <Icon name="check" size={14} />
                   </span>
                 )}
               </figure>

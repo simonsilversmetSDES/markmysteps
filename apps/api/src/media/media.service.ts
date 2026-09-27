@@ -83,6 +83,73 @@ export class MediaService {
     ]);
   }
 
+  /**
+   * Takes photos out of a trip without touching Immich.
+   *
+   * The reference goes and an exclusion takes its place, so the next sync
+   * leaves the photo where it is instead of pulling it straight back in. The
+   * trip's owner may take out anybody's; a travel companion only their own,
+   * because the photos are theirs to show and not to hide for somebody else.
+   * Ids that are not in this trip, or not the caller's to remove, are left out
+   * of the count rather than failing the whole batch.
+   */
+  async removeFromTrip(
+    tripId: string,
+    requesterId: string,
+    mediaRefIds: string[],
+  ): Promise<{ removed: number; removedIds: string[] }> {
+    const trip = await this.trips.getForEditor(tripId, requesterId);
+    const refs = await this.prisma.mediaRef.findMany({
+      where: {
+        id: { in: mediaRefIds },
+        tripId,
+        ...(trip.ownerId === requesterId ? {} : { userId: requesterId }),
+      },
+      select: { id: true, userId: true, immichAssetId: true },
+    });
+    if (refs.length === 0) return { removed: 0, removedIds: [] };
+    const ids = refs.map((r) => r.id);
+
+    await this.prisma.$transaction([
+      this.prisma.mediaExclusion.createMany({
+        data: refs.map((r) => ({ tripId, userId: r.userId, immichAssetId: r.immichAssetId })),
+        skipDuplicates: true,
+      }),
+      // A cover on a photo that is no longer in the trip falls back to the
+      // trip's own pick, the same as a cover that was never chosen.
+      this.prisma.trip.updateMany({
+        where: { id: tripId, coverMediaId: { in: ids } },
+        data: { coverMediaId: null },
+      }),
+      this.prisma.stop.updateMany({
+        where: { tripId, coverMediaId: { in: ids } },
+        data: { coverMediaId: null },
+      }),
+      this.prisma.mediaRef.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+    return { removed: ids.length, removedIds: ids };
+  }
+
+  /**
+   * Puts photos back that were taken out: the exclusions go, and the caller
+   * runs a sync to bring the references back. Same rule as taking them out.
+   */
+  async clearExclusions(
+    tripId: string,
+    requesterId: string,
+    immichAssetIds: string[],
+  ): Promise<number> {
+    const trip = await this.trips.getForEditor(tripId, requesterId);
+    const { count } = await this.prisma.mediaExclusion.deleteMany({
+      where: {
+        tripId,
+        immichAssetId: { in: immichAssetIds },
+        ...(trip.ownerId === requesterId ? {} : { userId: requesterId }),
+      },
+    });
+    return count;
+  }
+
   async getForRequester(mediaRefId: string, requesterId: string): Promise<MediaRef> {
     const media = await this.prisma.mediaRef.findFirst({
       where: {

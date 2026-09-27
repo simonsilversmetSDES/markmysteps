@@ -16,6 +16,7 @@ import { MembersPanel } from '../components/MembersPanel';
 import { PhotoBook } from '../components/PhotoBook';
 import { SharePanel } from '../components/SharePanel';
 import { SideResizer } from '../components/SideResizer';
+import { PhotoTools } from '../components/PhotoTools';
 import { SummaryPanel } from '../components/SummaryPanel';
 import { Timeline } from '../components/Timeline';
 import { TrackPointsEditor } from '../components/TrackPointsEditor';
@@ -28,7 +29,7 @@ import { popWasOurs } from '../lib/backStack';
 import { useExit } from '../lib/useExit';
 import { useSheetDismiss } from '../lib/useSheetDismiss';
 import { formatDate, tripCoverBg } from '../lib/colors';
-import { listDeviceMedia } from '../lib/deviceMedia';
+import { isDeviceMediaId, listDeviceMedia } from '../lib/deviceMedia';
 import { useNow } from '../lib/lastSeen';
 import { canEditTrip } from '../lib/perm';
 import { tripGlyph, tripGlyphSize, tripGlyphStroke } from '../lib/tripGlyph';
@@ -62,6 +63,9 @@ export function TripDetailPage() {
   const [noAccess, setNoAccess] = useState(false);
   const [addPointMode, setAddPointMode] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  /** Picking photos to take out of the trip, and which ones are picked. */
+  const [selecting, setSelecting] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<Set<string>>(new Set());
   // Arriving from a trip card's avatars means "let me manage who is on this",
   // so the sheet is already open when the page paints. The flag is consumed
   // straight away, or closing it and reloading would just open it again.
@@ -117,6 +121,12 @@ export function TripDetailPage() {
   const [pointTime, setPointTime] = useState('');
   const [stops, setStops] = useState<PlannedStop[]>([]);
   const [tab, setTab] = useState<'timeline' | 'plan'>('timeline');
+  // Picking is a timeline thing: switching to the planner puts it away.
+  useEffect(() => {
+    if (tab === 'timeline') return;
+    setSelecting(false);
+    setSelectedMedia(new Set());
+  }, [tab]);
   const planPushedRef = useRef(false);
   const [planPick, setPlanPick] = useState<{ lat: number; lng: number } | null>(null);
   /** Where the planner wants its pin: the place being chosen for a stop. */
@@ -1181,11 +1191,46 @@ export function TripDetailPage() {
         </div>
 
         {tab === 'timeline' ? (
+          <>
+          {canEdit && tripId && (
+            <PhotoTools
+              tripId={tripId}
+              media={media}
+              selecting={selecting}
+              selected={selectedMedia}
+              onSelecting={setSelecting}
+              onClearSelection={() => setSelectedMedia(new Set())}
+              onRemoved={(ids) => {
+                const gone = new Set(ids);
+                setMedia((current) => current.filter((m) => !gone.has(m.id)));
+                api<TripStats>(`/trips/${tripId}/stats`).then(setStats).catch(() => undefined);
+              }}
+              onChanged={loadData}
+            />
+          )}
           <Timeline
             media={visibleMedia}
             visibleUsers={visibleUsers}
             showOwner={(trip?.members.length ?? 0) > 1}
             onPhotoClick={(item) => setLightboxIndex(visibleMedia.indexOf(item))}
+            selecting={selecting}
+            selected={selectedMedia}
+            // Photos off the phone are not the server's to take out, and a
+            // companion takes out only their own; the owner may take out any.
+            canSelect={(item) =>
+              !isDeviceMediaId(item.id) &&
+              (trip?.ownerId === user?.id || item.userId === user?.id)
+            }
+            onSelectionChange={(ids, on) =>
+              setSelectedMedia((current) => {
+                const next = new Set(current);
+                for (const id of ids) {
+                  if (on) next.add(id);
+                  else next.delete(id);
+                }
+                return next;
+              })
+            }
             notes={notes}
             canEditNotes={canEdit}
             emptyOwnerName={
@@ -1207,6 +1252,7 @@ export function TripDetailPage() {
               coverMediaId: s.coverMediaId,
             }))}
           />
+          </>
         ) : (
           <TripPlanner
             tripId={tripId!}
