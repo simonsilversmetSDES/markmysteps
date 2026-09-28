@@ -2,7 +2,7 @@
   "name": "@markmysteps/web",
   "version": "0.1.0",
   "private": true,
-  "description": "MarkMySteps web client \u2014 React + Vite PWA",
+  "description": "MarkMySteps web client — React + Vite PWA",
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -25,7 +25,9 @@
     "maplibre-gl": "^5.24.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.1.0",
+    "remark-gfm": "^4.0.1",
     "topojson-client": "^3.1.0",
     "world-atlas": "^2.0.2"
   },

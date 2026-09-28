@@ -625,7 +625,8 @@ export class TripsService {
       where: { id: tripId },
       data: {
         title: dto.title?.trim(),
-        description: dto.description?.trim(),
+        // Emptied in the settings means gone, not an empty string.
+        description: dto.description !== undefined ? dto.description.trim() || null : undefined,
         startDate,
         endDate,
         ...(dto.coverMediaId !== undefined ? { coverMediaId: dto.coverMediaId } : {}),

@@ -27,7 +27,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ImmichClientService } from '../immich/immich-client.service';
 import { ImmichConnectionService } from '../immich/immich-connection.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { PlannedStop, StopsService } from '../stops/stops.service';
+import { StopsService } from '../stops/stops.service';
 import { RouteCollection, TrackingService } from '../tracking/tracking.service';
 import { countStopPlaces, TripsService } from '../trips/trips.service';
 import { ShareLinkInfo, ShareService, ShareTokenPayload } from './share.service';
@@ -159,7 +159,8 @@ export class SharePublicController {
         startDate: true,
         endDate: true,
         coverMediaId: true,
-        members: { select: { userId: true, user: { select: { displayName: true } } } },
+        // Counted on the page, never identified: no account ids go out.
+        members: { select: { user: { select: { displayName: true } } } },
         // Fallback cover: the first photo of the trip.
         mediaRefs: { take: 1, orderBy: { takenAt: 'asc' }, select: { id: true } },
       },
@@ -211,13 +212,36 @@ export class SharePublicController {
     return this.tracking.getRoutesUnchecked(session.tripId, { userIds: [trip.ownerId] });
   }
 
+  /**
+   * The plan, as the page draws it: the map, the places rail and the list of
+   * stops with their nights and notes. Only those fields go out — not the
+   * trip id or the row's bookkeeping.
+   */
   @Get(':slug/stops')
-  async shareStops(
-    @Param('slug') slug: string,
-    @Headers('x-share-token') token: string,
-  ): Promise<PlannedStop[]> {
+  async shareStops(@Param('slug') slug: string, @Headers('x-share-token') token: string) {
     const session = await this.requireSession(slug, token);
-    return this.stops.listUnchecked(session.tripId);
+    const stops = await this.stops.listUnchecked(session.tripId);
+    return stops.map((s) => ({
+      id: s.id,
+      name: s.name,
+      notes: s.notes,
+      nights: s.nights,
+      orderIndex: s.orderIndex,
+      latitude: s.latitude,
+      longitude: s.longitude,
+      countryCode: s.countryCode,
+      travelMode: s.travelMode,
+      flightNumber: s.flightNumber,
+      fromAirport: s.fromAirport,
+      toAirport: s.toAirport,
+      viaAirports: s.viaAirports,
+      parentStopId: s.parentStopId,
+      dayTripDate: s.dayTripDate,
+      hideLeg: s.hideLeg,
+      coverMediaId: s.coverMediaId,
+      arrivalDate: s.arrivalDate,
+      departureDate: s.departureDate,
+    }));
   }
 
   /**

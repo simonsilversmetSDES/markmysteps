@@ -12,9 +12,11 @@ export class CreateTripDto {
   @Length(1, 120)
   title: string;
 
+  /** Shown on the share page as Markdown: flights, hotels, the plan. A real
+   *  itinerary with a couple of tables is well past 2000 characters. */
   @IsOptional()
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(10000)
   description?: string;
 
   @IsDateString()

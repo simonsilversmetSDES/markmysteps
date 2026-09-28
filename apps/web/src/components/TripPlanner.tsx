@@ -414,6 +414,17 @@ export function TripPlanner({
     );
   }
 
+  /** A stop's own notes, shown under it on the share page. Empty clears them. */
+  async function saveNotes(stop: PlannedStop, text: string) {
+    const notes = text.trim();
+    if (notes === (stop.notes ?? '')) return;
+    refresh(
+      await mutate(`${stopsPath}/${stop.id}`, 'PATCH', { notes }, (current) =>
+        localUpdate(current, tripStart, stop.id, { notes }),
+      ),
+    );
+  }
+
   async function changeNights(stop: PlannedStop, delta: number) {
     const nights = Math.max(0, stop.nights + delta);
     refresh(
@@ -974,7 +985,7 @@ export function TripPlanner({
                   // The whole card is the drag handle, but the day-trip panel
                   // inside it holds a text field — dragging there must type, not
                   // reorder the route.
-                  if ((e.target as HTMLElement).closest('.daytrip-panel, .daytrips')) {
+                  if ((e.target as HTMLElement).closest('.daytrip-panel, .daytrips, .stop-notes')) {
                     e.preventDefault();
                     return;
                   }
@@ -1077,6 +1088,9 @@ export function TripPlanner({
                     onCancel={stopEditing}
                     onSave={(name) => void saveStopEdit(stop, name)}
                   />
+                )}
+                {!readOnly && (
+                  <StopNotes notes={stop.notes} onSave={(text) => void saveNotes(stop, text)} />
                 )}
                 <DayTrips
                   parent={stop}
@@ -2176,6 +2190,46 @@ function PlaceLine({
  * that and changes only what was wrong. It unfolds inside the card rather than
  * over the page, so the map stays free to tap and the pin free to drag.
  */
+/**
+ * Notes for one stop: the hotel, the booking, what not to miss. They go out
+ * with the share link, under the stop, as Markdown.
+ *
+ * Folded away until asked for, so a plan without notes looks as it did. It
+ * saves when you leave the field, like the day stories.
+ */
+function StopNotes({ notes, onSave }: { notes: string | null; onSave: (text: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(notes ?? '');
+  useEffect(() => setDraft(notes ?? ''), [notes]);
+
+  return (
+    <div className="stop-notes">
+      <button
+        type="button"
+        className={`daytrip-btn stop-notes-toggle ${open ? 'open' : ''}`}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="pencil" size={13} />
+        {notes ? 'Notitie' : 'Notitie toevoegen'}
+      </button>
+      {!open && notes && <p className="stop-notes-preview muted">{notes}</p>}
+      {open && (
+        <textarea
+          className="stop-notes-input"
+          rows={3}
+          maxLength={2000}
+          autoFocus
+          value={draft}
+          placeholder="Hotel, reservatie, tips… Markdown werkt: **vet**, lijstjes, [link](https://…)"
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => onSave(draft)}
+        />
+      )}
+    </div>
+  );
+}
+
 function StopEdit({
   stop,
   open,

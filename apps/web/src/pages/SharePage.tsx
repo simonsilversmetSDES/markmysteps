@@ -4,13 +4,14 @@ import { useParams } from 'react-router-dom';
 import type { MediaItem, RouteCollection } from '../api/types';
 import type { PlannedStop } from '../lib/arc';
 import { ArcOverlay, createArcOverlay, drawPlannedStops, groundRuns } from '../lib/mapRoute';
-import { colorForUser, formatDay } from '../lib/colors';
+import { colorForUser, formatDate, formatDateRange, formatDay } from '../lib/colors';
 import { getMapStyle } from '../lib/prefs';
 import { FastScroll } from '../components/FastScroll';
 import { useExit } from '../lib/useExit';
 import { Icon } from '../components/Icon';
 import { DayNote, TripNote } from '../components/DayNote';
 import { Lightbox } from '../components/Lightbox';
+import { Markdown } from '../components/Markdown';
 import { LogoMark } from '../components/Logo';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { jumpToDay, StopJump } from '../components/StopJump';
@@ -27,7 +28,7 @@ interface SharedTrip {
   description: string | null;
   startDate: string;
   endDate: string;
-  members: { userId: string; user: { displayName: string } }[];
+  members: { user: { displayName: string } }[];
   resolvedCoverId: string | null;
   stats: {
     distanceKm: number;
@@ -606,6 +607,24 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     return map;
   }, [notes]);
 
+  /**
+   * The plan as a list, for the people at home who want to know where you
+   * sleep tonight: each place with its dates, its nights and your notes. The
+   * heen- and terugreis bars are left out — their notes are only a label — and
+   * a day trip is listed under the place it was made from.
+   */
+  const itinerary = useMemo(() => {
+    const dayTrips = new Map<string, SharedStop[]>();
+    for (const stop of stops) {
+      if (!stop.parentStopId) continue;
+      dayTrips.set(stop.parentStopId, [...(dayTrips.get(stop.parentStopId) ?? []), stop]);
+    }
+    return [...stops]
+      .filter((s) => !s.parentStopId && !LEG_NAMES.has(s.name))
+      .sort((a, b) => a.orderIndex - b.orderIndex)
+      .map((stop) => ({ stop, dayTrips: dayTrips.get(stop.id) ?? [] }));
+  }, [stops]);
+
   const placeByDay = useMemo(() => {
     const map = new Map<string, string>();
     for (const entry of entries) if (entry.place) map.set(entry.date, entry.place);
@@ -661,7 +680,46 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
         </div>
       </div>
 
-      {trip?.description && <p className="share-description">{trip.description}</p>}
+      {trip?.description && <Markdown text={trip.description} className="share-description" />}
+
+      {itinerary.length > 0 && (
+        <section className="share-section share-stops">
+          <h2 className="share-section-title">Etappes</h2>
+          <ol className="share-stops-list">
+            {itinerary.map(({ stop, dayTrips }) => (
+              <li key={stop.id} className="share-stop">
+                <div className="share-stop-head">
+                  <strong className="share-stop-name">
+                    <Flag code={stop.countryCode} size={15} /> {stop.name}
+                  </strong>
+                  <span className="share-stop-meta muted">
+                    {stop.nights > 0
+                      ? formatDateRange(stop.arrivalDate, stop.departureDate)
+                      : formatDate(stop.arrivalDate)}
+                    {' · '}
+                    {stop.nights === 1 ? '1 nacht' : `${stop.nights} nachten`}
+                  </span>
+                </div>
+                {stop.notes && <Markdown text={stop.notes} className="share-stop-notes" />}
+                {dayTrips.length > 0 && (
+                  <ul className="share-stop-daytrips">
+                    {dayTrips.map((d) => (
+                      <li key={d.id}>
+                        Dagtrip: {d.name}
+                        <span className="muted">
+                          {' · '}
+                          {formatDate(d.dayTripDate ?? d.arrivalDate)}
+                        </span>
+                        {d.notes && <Markdown text={d.notes} className="share-stop-notes" />}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <div className="share-map">
         <div ref={mapContainerRef} className="share-map-inner" />

@@ -1138,3 +1138,24 @@ body.side-resizing .trip-detail > :not(.side-resizer) {
 .trip-detail-wait {
   min-height: 60vh;
 }
+
+/* ---------- Reisinfo (the trip description, folded) ---------- */
+
+.trip-description {
+  margin: 0.2rem 0 0.8rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  background: var(--paper-raised);
+  font-size: 0.9rem;
+}
+
+.trip-description summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.trip-description[open] summary {
+  margin-bottom: 0.5rem;
+}

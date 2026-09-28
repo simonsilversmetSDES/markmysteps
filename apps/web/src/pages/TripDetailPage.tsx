@@ -5,6 +5,7 @@ import { api, ApiError } from '../api/client';
 import type { LiveFix, MediaItem, RouteCollection, Trip } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { AuthImage } from '../components/AuthImage';
+import { Markdown } from '../components/Markdown';
 import { ChoiceOption, chooseModal, confirmModal } from '../components/confirm';
 import { DayFilter, type TripDay } from '../components/DayFilter';
 import { Icon } from '../components/Icon';
@@ -1166,7 +1167,14 @@ export function TripDetailPage() {
             )}
           </div>
         </div>
-        {trip?.description && <p>{trip.description}</p>}
+        {/* Folded: a full itinerary with tables would push the timeline a
+            screen down. The share page shows it open, for the people at home. */}
+        {trip?.description && (
+          <details className="trip-description">
+            <summary>Reisinfo</summary>
+            <Markdown text={trip.description} />
+          </details>
+        )}
 
         <div className="side-tabs" role="tablist" data-tab={tab}>
           {/* One pill that slides between the two, so switching reads as a

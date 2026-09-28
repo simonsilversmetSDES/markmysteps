@@ -54,6 +54,7 @@ export function TripSettingsPage() {
   const { user } = useAuth();
   const [trip, setTrip] = useState<Trip | null>(null);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [autoTrack, setAutoTrack] = useState(false);
@@ -82,6 +83,7 @@ export function TripSettingsPage() {
       .then((t) => {
         setTrip(t);
         setTitle(t.title);
+        setDescription(t.description ?? '');
         setStartDate(t.startDate.slice(0, 10));
         setEndDate(t.endDate.slice(0, 10));
         setAutoTrack(t.autoTrack);
@@ -114,6 +116,7 @@ export function TripSettingsPage() {
     // Not on the first render: `load()` fills these in, and that is not an edit.
     const unchanged =
       title === trip.title &&
+      description.trim() === (trip.description ?? '') &&
       startDate === trip.startDate.slice(0, 10) &&
       endDate === trip.endDate.slice(0, 10) &&
       autoTrack === trip.autoTrack;
@@ -125,7 +128,7 @@ export function TripSettingsPage() {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, startDate, endDate, autoTrack, trip, isOwner]);
+  }, [title, description, startDate, endDate, autoTrack, trip, isOwner]);
 
   // Leaving the page mid-edit must not lose the last keystroke.
   useEffect(() => {
@@ -145,10 +148,14 @@ export function TripSettingsPage() {
     try {
       await api(`/trips/${tripId}`, {
         method: 'PATCH',
-        body: { title, startDate, endDate, autoTrack },
+        body: { title, description, startDate, endDate, autoTrack },
       });
       // Keep the local copy in step, or the effect above sees an edit again.
-      setTrip((t) => (t ? { ...t, title, startDate, endDate, autoTrack } : t));
+      setTrip((t) =>
+        t
+          ? { ...t, title, description: description.trim() || null, startDate, endDate, autoTrack }
+          : t,
+      );
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1600);
       // If you switch auto-track on while the trip is already running, start
@@ -406,6 +413,25 @@ export function TripSettingsPage() {
           <div className="field">
             <label htmlFor="ts-title">Naam</label>
             <input id="ts-title" required value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          {/* What the people at home read first on the share link: flights,
+              where you sleep, the plan. Markdown, so a table stays a table. */}
+          <div className="field">
+            <label htmlFor="ts-description">Reisinfo</label>
+            <textarea
+              id="ts-description"
+              className="ts-description"
+              rows={6}
+              maxLength={10000}
+              value={description}
+              placeholder={
+                '## Vluchten\n| Vlucht | Datum | Traject |\n|---|---|---|\n| HO1660 | 02/10 | Brussel → Shanghai |'
+              }
+              onChange={(e) => setDescription(e.target.value)}
+            />
+            <span className="muted ts-description-hint">
+              Staat bovenaan de deellink. Markdown werkt: koppen, lijstjes, tabellen en links.
+            </span>
           </div>
           <div className="ts-dates">
             <DateField id="ts-start" label="Startdatum" value={startDate} onChange={setStartDate} />
