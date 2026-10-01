@@ -347,6 +347,9 @@ export function TripMap({
       resetView: () => {
         const bounds = wholeTripRef.current;
         if (!bounds) return;
+        // The panel may have just changed size (the phone's map opening out or
+        // folding back), and the observer below only catches up on a frame.
+        map.resize();
         fitSafely(map, bounds, tripPadding(hiddenBottomRef.current), TRIP_MAX_ZOOM, 700);
       },
       glowRoutes: () => runGlow(map, glowLinesRef.current),

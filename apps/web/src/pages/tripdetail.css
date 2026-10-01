@@ -90,8 +90,9 @@ body.side-resizing .trip-detail > :not(.side-resizer) {
     left: 0;
     right: 0;
     /* --vh-stable ignores the keyboard, so opening an input doesn't resize the
-       map (JS shrinks this toward 32% as you scroll). */
-    height: calc(var(--vh-stable, 100vh) * 0.55);
+       map (JS shrinks this toward 24% as you scroll). Low on purpose: the photos
+       are the page; a tap opens the map over the whole screen (.map-full). */
+    height: calc(var(--vh-stable, 100vh) * 0.4);
     z-index: 1;
     overflow: hidden;
     border-radius: 0 0 var(--radius-l) var(--radius-l);
@@ -116,7 +117,7 @@ body.side-resizing .trip-detail > :not(.side-resizer) {
     top: -1px;
     left: 0;
     width: 100%;
-    height: calc(var(--vh-stable, 100vh) * 0.55 + 1px);
+    height: calc(var(--vh-stable, 100vh) * 0.4 + 1px);
   }
 
   .trip-detail .trip-map-panel {
@@ -142,7 +143,7 @@ body.side-resizing .trip-detail > :not(.side-resizer) {
   .trip-detail .trip-side {
     position: relative;
     z-index: 0;
-    margin-top: calc(var(--vh-stable, 100vh) * 0.55);
+    margin-top: calc(var(--vh-stable, 100vh) * 0.4);
     min-height: var(--vh-stable, 100vh);
     background: var(--paper);
     /* Narrow gutters: on a phone every millimetre spent on empty paper here is
@@ -1036,7 +1037,7 @@ body.side-resizing .trip-detail > :not(.side-resizer) {
   /* One knob for both layouts, so the keyframes below work either way. */
   --backtop-x: -50%;
   position: fixed;
-  top: calc(32vh + 0.6rem);
+  top: calc(var(--vh-stable, 100vh) * 0.24 + 0.6rem);
   left: 50%;
   /* Above the fixed map panel, which is its own layer. */
   z-index: 8;
@@ -1158,4 +1159,102 @@ body.side-resizing .trip-detail > :not(.side-resizer) {
 
 .trip-description[open] summary {
   margin-bottom: 0.5rem;
+}
+
+/* ---------- Phone: fold the map away, open it out on a tap ---------- */
+
+/* Opens the map out. Desktop has the map beside the photos at full height, so
+   there is nothing to open. */
+.map-expand,
+.map-expand-hit {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /* The folded map as one big button: under the corner buttons and chips,
+     over the canvas and its markers. */
+  .map-foldable:not(.map-full) .map-expand-hit {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    border: none;
+    padding: 0;
+    background: transparent;
+    cursor: zoom-in;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* The same thing said out loud, so it is not a secret: a glass button in
+     the corner, the way the locate button looks. */
+  .map-foldable:not(.map-full) .map-expand {
+    position: absolute;
+    right: 0.9rem;
+    bottom: 0.9rem;
+    z-index: 45;
+    width: 42px;
+    height: 42px;
+    display: grid;
+    place-content: center;
+    border-radius: 50%;
+    background: var(--glass);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-m);
+    color: var(--ink);
+    cursor: pointer;
+    animation: mapPillIn 0.34s var(--ease) backwards;
+  }
+
+  .map-foldable:not(.map-full) .map-expand:active svg {
+    transform: scale(0.86);
+  }
+
+  /* Locate steps aside for it, and the map's ⓘ for both. */
+  .map-foldable:not(.map-full) .map-locate {
+    right: calc(0.9rem + 50px);
+  }
+
+  .map-foldable:not(.map-full) .trip-map .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+    margin-right: 100px;
+  }
+
+  /* Opened out: the panel takes the screen and stops being slid away by the
+     scroll (the script writes those transforms inline, hence !important). */
+  .trip-detail.map-full {
+    overflow: hidden;
+  }
+
+  .trip-detail.map-full .trip-map-panel {
+    height: var(--vh-stable, 100vh);
+    z-index: 50;
+    border-radius: 0;
+    transform: none !important;
+    animation: mapOpenOut 0.28s var(--ease);
+  }
+
+  .trip-detail.map-full .trip-map {
+    height: calc(var(--vh-stable, 100vh) + 1px);
+    transform: none !important;
+  }
+
+  .trip-detail.map-full .trip-fabs,
+  .trip-detail.map-full .trip-fab-back {
+    transform: none !important;
+  }
+
+  .trip-detail.map-full .trip-map-panel::after {
+    display: none;
+  }
+
+  .trip-detail.map-full .map-locate,
+  .trip-detail.map-full .map-bottom-left {
+    margin-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@keyframes mapOpenOut {
+  from {
+    opacity: 0.6;
+  }
 }

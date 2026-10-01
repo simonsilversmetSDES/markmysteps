@@ -14,6 +14,7 @@ import { Lightbox } from '../components/Lightbox';
 import { Markdown } from '../components/Markdown';
 import { LogoMark } from '../components/Logo';
 import { PhotoGrid } from '../components/PhotoGrid';
+import { GRID_ZOOM_PREVIEW, useGridZoom } from '../lib/gridZoom';
 import { jumpToDay, StopJump } from '../components/StopJump';
 import { TripFacts } from '../components/TripFacts';
 import { WeatherBadge } from '../components/WeatherBadge';
@@ -166,6 +167,8 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
   const [freshOpen, setFreshOpen] = useState(false);
   const [freshShown, freshClosing] = useExit(freshOpen, 220);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  /** Which of the folded sections is open, if any. Closed by default. */
+  const [infoTab, setInfoTab] = useState<'info' | 'stops' | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const arcsRef = useRef<ArcOverlay | null>(null);
@@ -183,6 +186,8 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
       `/api/share/${slug}/media/${id}/thumbnail?size=${size}&t=${encodeURIComponent(token)}`,
     [slug, token],
   );
+  // Pinched in far enough, the small rendition is a blur at the size it is shown.
+  const gridSize = useGridZoom() >= GRID_ZOOM_PREVIEW ? 'preview' : 'thumbnail';
   const videoSrc = useCallback(
     (id: string) => `/api/share/${slug}/media/${id}/video?t=${encodeURIComponent(token)}`,
     [slug, token],
@@ -631,6 +636,15 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     return map;
   }, [entries]);
 
+  const hasInfo = !!trip?.description?.trim();
+  const hasStops = itinerary.length > 0;
+  // "Gent → Brugge → Antwerpen", or the first and last with how many between.
+  const stopsTeaser = useMemo(() => {
+    const names = itinerary.map(({ stop }) => stop.name);
+    if (names.length <= 3) return names.join(' → ');
+    return `${names[0]} → … → ${names[names.length - 1]}`;
+  }, [itinerary]);
+
   return (
     <div className="share-view">
       <header className="share-topbar">
@@ -680,45 +694,114 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
         </div>
       </div>
 
-      {trip?.description && <Markdown text={trip.description} className="share-description" />}
-
-      {itinerary.length > 0 && (
-        <section className="share-section share-stops">
-          <h2 className="share-section-title">Etappes</h2>
-          <ol className="share-stops-list">
-            {itinerary.map(({ stop, dayTrips }) => (
-              <li key={stop.id} className="share-stop">
-                <div className="share-stop-head">
-                  <strong className="share-stop-name">
-                    <Flag code={stop.countryCode} size={15} /> {stop.name}
-                  </strong>
-                  <span className="share-stop-meta muted">
-                    {stop.nights > 0
-                      ? formatDateRange(stop.arrivalDate, stop.departureDate)
-                      : formatDate(stop.arrivalDate)}
-                    {' · '}
-                    {stop.nights === 1 ? '1 nacht' : `${stop.nights} nachten`}
+      {/* Reisinfo and the stops, folded behind two tabs: the photos are what
+          people open a shared trip for, and a long story plus every stop above
+          the map pushed the first photo off the screen. The tabs say what is
+          behind them (a teaser line, a count), so nobody misses that it is
+          there. */}
+      {(hasInfo || hasStops) && (
+        <div className="share-tabs">
+          <div className="share-tabs-row" role="tablist" aria-label="Meer over deze reis">
+            {hasInfo && (
+              <button
+                type="button"
+                role="tab"
+                id="share-tab-info"
+                aria-selected={infoTab === 'info'}
+                aria-controls="share-tab-panel"
+                className={`share-tab ${infoTab === 'info' ? 'open' : ''}`}
+                onClick={() => setInfoTab((t) => (t === 'info' ? null : 'info'))}
+              >
+                <span className="share-tab-icon">
+                  <Icon name="book" size={17} />
+                </span>
+                <span className="share-tab-text">
+                  <strong>Reisinfo</strong>
+                  <span className="share-tab-sub">
+                    {infoTab === 'info' ? 'Sluiten' : 'Het verhaal'}
                   </span>
-                </div>
-                {stop.notes && <Markdown text={stop.notes} className="share-stop-notes" />}
-                {dayTrips.length > 0 && (
-                  <ul className="share-stop-daytrips">
-                    {dayTrips.map((d) => (
-                      <li key={d.id}>
-                        Dagtrip: {d.name}
-                        <span className="muted">
-                          {' · '}
-                          {formatDate(d.dayTripDate ?? d.arrivalDate)}
-                        </span>
-                        {d.notes && <Markdown text={d.notes} className="share-stop-notes" />}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </li>
-            ))}
-          </ol>
-        </section>
+                </span>
+                <span className="share-tab-chevron" aria-hidden="true">
+                  <Icon name="chevron-down" size={16} />
+                </span>
+              </button>
+            )}
+            {hasStops && (
+              <button
+                type="button"
+                role="tab"
+                id="share-tab-stops"
+                aria-selected={infoTab === 'stops'}
+                aria-controls="share-tab-panel"
+                className={`share-tab ${infoTab === 'stops' ? 'open' : ''}`}
+                onClick={() => setInfoTab((t) => (t === 'stops' ? null : 'stops'))}
+              >
+                <span className="share-tab-icon">
+                  <Icon name="route" size={17} />
+                </span>
+                <span className="share-tab-text">
+                  <strong>
+                    Etappes <span className="share-tab-count">{itinerary.length}</span>
+                  </strong>
+                  <span className="share-tab-sub">
+                    {infoTab === 'stops' ? 'Sluiten' : stopsTeaser}
+                  </span>
+                </span>
+                <span className="share-tab-chevron" aria-hidden="true">
+                  <Icon name="chevron-down" size={16} />
+                </span>
+              </button>
+            )}
+          </div>
+          {infoTab && (
+            <div
+              className="share-tab-panel"
+              id="share-tab-panel"
+              role="tabpanel"
+              aria-labelledby={infoTab === 'info' ? 'share-tab-info' : 'share-tab-stops'}
+              key={infoTab}
+            >
+              {infoTab === 'info' && trip?.description && (
+                <Markdown text={trip.description} className="share-description" />
+              )}
+              {infoTab === 'stops' && (
+              <ol className="share-stops-list">
+                {itinerary.map(({ stop, dayTrips }) => (
+                  <li key={stop.id} className="share-stop">
+                    <div className="share-stop-head">
+                      <strong className="share-stop-name">
+                        <Flag code={stop.countryCode} size={15} /> {stop.name}
+                      </strong>
+                      <span className="share-stop-meta muted">
+                        {stop.nights > 0
+                          ? formatDateRange(stop.arrivalDate, stop.departureDate)
+                          : formatDate(stop.arrivalDate)}
+                        {' · '}
+                        {stop.nights === 1 ? '1 nacht' : `${stop.nights} nachten`}
+                      </span>
+                    </div>
+                    {stop.notes && <Markdown text={stop.notes} className="share-stop-notes" />}
+                    {dayTrips.length > 0 && (
+                      <ul className="share-stop-daytrips">
+                        {dayTrips.map((d) => (
+                          <li key={d.id}>
+                            Dagtrip: {d.name}
+                            <span className="muted">
+                              {' · '}
+                              {formatDate(d.dayTripDate ?? d.arrivalDate)}
+                            </span>
+                            {d.notes && <Markdown text={d.notes} className="share-stop-notes" />}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ol>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <div className="share-map">
@@ -810,7 +893,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
                       onClick={() => setLightboxIndex(indexOf.get(item.id) ?? 0)}
                     >
                       <img
-                        src={thumb(item.id)}
+                        src={thumb(item.id, gridSize)}
                         alt=""
                         className="timeline-img"
                         loading="lazy"

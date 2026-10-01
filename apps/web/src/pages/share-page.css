@@ -173,7 +173,147 @@
 }
 
 .share-description {
-  margin: -0.6rem 0 0;
+  margin: 0;
+}
+
+/* ---------- Reisinfo & Etappes: folded behind tabs ---------- */
+
+/* Pulled up close to the header card it belongs to; the page gap would leave
+   it floating halfway to the map. */
+.share-tabs {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: -0.8rem;
+  min-width: 0;
+}
+
+.share-tabs-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  grid-auto-flow: column;
+  gap: 0.5rem;
+}
+
+/* A card that plainly says what is inside and that it opens: icon, name, one
+   line of what you will find, and a chevron. */
+.share-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-s);
+  cursor: pointer;
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease),
+    background 0.18s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.share-tab:hover {
+  border-color: var(--accent);
+}
+
+.share-tab.open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.share-tab-icon {
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.share-tab.open .share-tab-icon {
+  background: var(--accent);
+  color: #fff;
+}
+
+.share-tab-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.25;
+}
+
+.share-tab-text strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+.share-tab-count {
+  display: inline-grid;
+  place-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.share-tab-sub {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.share-tab-chevron {
+  flex: none;
+  display: grid;
+  color: var(--ink-faint);
+  transition: transform 0.22s var(--ease), color 0.18s var(--ease);
+}
+
+.share-tab.open .share-tab-chevron {
+  transform: rotate(180deg);
+  color: var(--accent-ink);
+}
+
+/* Two side by side on a phone: every pixel of the card goes to the words. */
+@media (max-width: 480px) {
+  .share-tab {
+    gap: 0.45rem;
+    padding: 0.55rem 0.55rem 0.55rem 0.6rem;
+  }
+
+  .share-tab-icon {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+.share-tab-panel {
+  min-width: 0;
+  /* A wide table in the story (a flight list, say) scrolls inside the panel
+     instead of making the whole page wider than the phone. */
+  overflow-x: auto;
+  animation: shareTabIn 0.26s var(--ease) both;
+}
+
+@keyframes shareTabIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
 }
 
 /* ---------- Etappes: the plan as a list ---------- */
@@ -229,7 +369,8 @@
 
 .share-map {
   position: relative;
-  height: clamp(300px, 48vh, 460px);
+  /* A strip on a phone: the photos below are what the page is for. */
+  height: clamp(200px, 30vh, 260px);
   border: none;
   border-radius: var(--radius-l);
   overflow: hidden;
@@ -240,6 +381,12 @@
 .share-map-inner {
   position: absolute;
   inset: 0;
+}
+
+@media (min-width: 640px) {
+  .share-map {
+    height: clamp(300px, 48vh, 460px);
+  }
 }
 
 /* A WebGL canvas is composited on the GPU, so the parent's overflow:hidden
@@ -492,7 +639,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .share-backtop,
-  .share-fresh {
+  .share-fresh,
+  .share-tab-panel {
     animation: none;
   }
 }
