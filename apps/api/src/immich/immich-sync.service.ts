@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TripRole } from '@prisma/client';
 import { coverSuccessor, DeadRef } from '../media/cover-succession';
@@ -11,12 +11,24 @@ export interface SyncResult {
   tripId: string;
   usersSynced: number;
   assetsFound: number;
+  /** Always 0 now: a sync no longer adds photos, they are picked by hand. */
   assetsAdded: number;
   assetsRemoved: number;
   /** Photos that had no GPS and were placed from the tracked route. */
   assetsGeotagged: number;
   /** Of those, the ones whose position was written back into Immich. */
   assetsPushed: number;
+}
+
+/** A photo the trip could show but is not showing, as the picker lists it. */
+export interface Candidate {
+  immichAssetId: string;
+  assetType: 'IMAGE' | 'VIDEO';
+  takenAt: Date;
+  width: number | null;
+  height: number | null;
+  /** `new`: never looked at. `hidden`: left out on purpose, can still go in. */
+  status: 'new' | 'hidden';
 }
 
 /** Extra window after a trip's end date; photos often sync to Immich late. */
@@ -63,7 +75,15 @@ export class ImmichSyncService {
 
   /**
    * Syncs one trip: for every member with an Immich connection, fetch assets
-   * within the trip's date range and upsert MediaRefs (metadata only).
+   * within the trip's date range and bring the trip's references up to date
+   * with them (metadata only).
+   *
+   * It no longer adds photos. A trip used to take in every picture Immich had
+   * for its dates — the screenshots, the bursts, the ones nobody wants to see
+   * again — and the only way to be rid of them was to take them out one by
+   * one afterwards. Which photos go in is now chosen by hand, from
+   * `listCandidates`; what a sync still does is drop what Immich lost, fill in
+   * missing shapes and place photos from the route.
    */
   async syncTrip(tripId: string): Promise<SyncResult> {
     const trip = await this.prisma.trip.findUniqueOrThrow({
@@ -113,38 +133,6 @@ export class ImmichSyncService {
         );
         result.usersSynced++;
         result.assetsFound += assets.length;
-
-        // Photos taken out of this trip by hand stay out: Immich still has
-        // them, and that is exactly why they would otherwise come back.
-        const excluded = new Set(
-          (
-            await this.prisma.mediaExclusion.findMany({
-              where: { tripId, userId },
-              select: { immichAssetId: true },
-            })
-          ).map((e) => e.immichAssetId),
-        );
-
-        for (const asset of assets) {
-          if (excluded.has(asset.id)) continue;
-          const { count } = await this.prisma.mediaRef.createMany({
-            data: [
-              {
-                tripId,
-                userId,
-                immichAssetId: asset.id,
-                assetType: asset.type,
-                takenAt: asset.takenAt,
-                latitude: asset.latitude,
-                longitude: asset.longitude,
-                width: asset.width,
-                height: asset.height,
-              },
-            ],
-            skipDuplicates: true,
-          });
-          result.assetsAdded += count;
-        }
 
         // Refs that predate dimensions being recorded: fill them in from the
         // assets we just fetched. Only rows still missing them are touched, so
@@ -198,6 +186,113 @@ export class ImmichSyncService {
     }
 
     return result;
+  }
+
+  /**
+   * One traveller's Immich photos for this trip's dates that the trip is not
+   * showing: `new` ones nobody has looked at yet, and `hidden` ones that were
+   * left out when picking, or taken out of the trip later. Only the caller's
+   * own library — a companion's photos are theirs to pick.
+   */
+  async listCandidates(tripId: string, userId: string): Promise<Candidate[]> {
+    const assets = await this.assetsFor(tripId, userId);
+    const [refs, exclusions] = await Promise.all([
+      this.prisma.mediaRef.findMany({
+        where: { tripId, userId },
+        select: { immichAssetId: true },
+      }),
+      this.prisma.mediaExclusion.findMany({
+        where: { tripId, userId },
+        select: { immichAssetId: true },
+      }),
+    ]);
+    const shown = new Set(refs.map((r) => r.immichAssetId));
+    const hidden = new Set(exclusions.map((e) => e.immichAssetId));
+    return assets
+      .filter((a) => !shown.has(a.id))
+      .sort((a, b) => a.takenAt.getTime() - b.takenAt.getTime())
+      .map((a) => ({
+        immichAssetId: a.id,
+        assetType: a.type,
+        takenAt: a.takenAt,
+        width: a.width,
+        height: a.height,
+        status: hidden.has(a.id) ? 'hidden' : 'new',
+      }));
+  }
+
+  /**
+   * Puts the chosen photos of one traveller in the trip.
+   *
+   * The assets are looked up in Immich again rather than taken from the
+   * request, so nothing outside the trip's dates, or outside that traveller's
+   * own library, can be slipped in. Whatever was hidden among them stops
+   * being hidden.
+   */
+  async addAssets(tripId: string, userId: string, assetIds: string[]): Promise<number> {
+    if (assetIds.length === 0) return 0;
+    const assets = await this.assetsFor(tripId, userId);
+    const wanted = new Set(assetIds);
+    const chosen = assets.filter((a) => wanted.has(a.id));
+    if (chosen.length === 0) return 0;
+
+    const { count } = await this.prisma.mediaRef.createMany({
+      data: chosen.map((asset) => ({
+        tripId,
+        userId,
+        immichAssetId: asset.id,
+        assetType: asset.type,
+        takenAt: asset.takenAt,
+        latitude: asset.latitude,
+        longitude: asset.longitude,
+        width: asset.width,
+        height: asset.height,
+      })),
+      skipDuplicates: true,
+    });
+    await this.prisma.mediaExclusion.deleteMany({
+      where: { tripId, userId, immichAssetId: { in: chosen.map((a) => a.id) } },
+    });
+
+    // New photos without a position borrow one from the route, the same as
+    // a sync would have done for them.
+    try {
+      await this.geotag.geotagTrip(tripId);
+    } catch (err) {
+      this.logger.warn(`Geotagging failed for trip ${tripId}: ${String(err)}`);
+    }
+    return count;
+  }
+
+  /**
+   * Leaves photos out of the trip without showing them: the next pick lists
+   * them as hidden instead of new, and they can still be put in from there.
+   */
+  async hideAssets(tripId: string, userId: string, assetIds: string[]): Promise<number> {
+    if (assetIds.length === 0) return 0;
+    const { count } = await this.prisma.mediaExclusion.createMany({
+      data: assetIds.map((immichAssetId) => ({ tripId, userId, immichAssetId })),
+      skipDuplicates: true,
+    });
+    return count;
+  }
+
+  /** One traveller's Immich assets for this trip's dates. */
+  private async assetsFor(tripId: string, userId: string): Promise<ImmichAsset[]> {
+    const credentials = await this.connections.getCredentials(userId);
+    if (!credentials) {
+      throw new BadRequestException('Koppel eerst Immich in Instellingen');
+    }
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id: tripId },
+      select: { startDate: true, endDate: true },
+    });
+    return this.client.searchAssets(
+      credentials.serverUrl,
+      credentials.apiKey,
+      trip.startDate,
+      new Date(trip.endDate.getTime() + DAY_MS),
+    );
   }
 
   /**

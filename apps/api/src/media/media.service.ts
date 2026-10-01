@@ -131,23 +131,24 @@ export class MediaService {
   }
 
   /**
-   * Puts photos back that were taken out: the exclusions go, and the caller
-   * runs a sync to bring the references back. Same rule as taking them out.
+   * The hidden photos among `immichAssetIds` that the requester may put back,
+   * with whose library each one lives in. Same rule as taking them out: the
+   * owner any, a companion only their own.
    */
-  async clearExclusions(
+  async restorableExclusions(
     tripId: string,
     requesterId: string,
     immichAssetIds: string[],
-  ): Promise<number> {
+  ): Promise<{ userId: string; immichAssetId: string }[]> {
     const trip = await this.trips.getForEditor(tripId, requesterId);
-    const { count } = await this.prisma.mediaExclusion.deleteMany({
+    return this.prisma.mediaExclusion.findMany({
       where: {
         tripId,
         immichAssetId: { in: immichAssetIds },
         ...(trip.ownerId === requesterId ? {} : { userId: requesterId }),
       },
+      select: { userId: true, immichAssetId: true },
     });
-    return count;
   }
 
   async getForRequester(mediaRefId: string, requesterId: string): Promise<MediaRef> {

@@ -7,6 +7,7 @@ import { useExit } from '../lib/useExit';
 
 import { confirmModal } from './confirm';
 import { Icon } from './Icon';
+import { PhotoPicker, PickerTab } from './PhotoPicker';
 import './phototools.css';
 
 /**
@@ -18,6 +19,10 @@ import './phototools.css';
  * ticket, the fifteen near-identical shots of one fountain. Taking one out
  * never touches Immich — the photo stays in the library, the trip just stops
  * showing it, and later syncs leave it out.
+ *
+ * With a server, syncing no longer pulls every photo in: it opens the picker,
+ * where you choose which of the new ones the trip shows. What you leave out
+ * goes to "Verborgen", from where it can still be put in.
  */
 export function PhotoTools({
   tripId,
@@ -51,6 +56,11 @@ export function PhotoTools({
   const lastUndoCount = useRef(0);
   if (undo) lastUndoCount.current = undo.count;
   const [barShown, barClosing] = useExit(selecting, 220);
+  const [picker, setPicker] = useState<PickerTab | null>(null);
+  /** The tab the picker opened on, kept while it animates away. */
+  const lastPicker = useRef<PickerTab>('new');
+  if (picker) lastPicker.current = picker;
+  const [pickerShown, pickerClosing] = useExit(picker !== null, 240);
 
   useEffect(
     () => () => {
@@ -67,6 +77,22 @@ export function PhotoTools({
   }, [message]);
 
   async function sync() {
+    if (!isLocalMode()) {
+      // Tidy up first (photos gone from Immich, positions from the route),
+      // then offer what is new. The tidy-up failing is no reason not to pick.
+      setSyncing(true);
+      setMessage(null);
+      try {
+        await api<SyncResult>(`/trips/${tripId}/sync`, { method: 'POST' });
+        onChanged();
+      } catch {
+        // The picker says it itself if Immich cannot be reached.
+      } finally {
+        setSyncing(false);
+      }
+      setPicker('new');
+      return;
+    }
     setSyncing(true);
     setMessage(null);
     try {
@@ -93,8 +119,8 @@ export function PhotoTools({
     const ok = await confirmModal({
       title: n === 1 ? 'Foto uit deze reis halen?' : `${n} foto's uit deze reis halen?`,
       body:
-        'Ze blijven gewoon in Immich staan. Een volgende sync zet ze niet terug; ' +
-        'meteen hierna kun je het nog ongedaan maken.',
+        'Ze blijven gewoon in Immich staan en gaan naar Verborgen, ' +
+        'van waar je ze later nog kunt terugzetten.',
       confirmLabel: 'Uit reis halen',
       danger: true,
     });
@@ -164,6 +190,17 @@ export function PhotoTools({
         {!isLocalMode() && (
           <button
             type="button"
+            className="btn btn-ghost photo-tools-btn"
+            onClick={() => setPicker('hidden')}
+            disabled={syncing || selecting}
+          >
+            <Icon name="eye-off" size={15} />
+            Verborgen
+          </button>
+        )}
+        {!isLocalMode() && (
+          <button
+            type="button"
             className={`btn photo-tools-btn ${selecting ? 'btn-primary' : 'btn-ghost'}`}
             onClick={() => {
               if (selecting) onClearSelection();
@@ -186,6 +223,21 @@ export function PhotoTools({
         <p className="photo-tools-msg" role="status">
           {message}
         </p>
+      )}
+
+      {pickerShown && (
+        <PhotoPicker
+          tripId={tripId}
+          initialTab={lastPicker.current}
+          closing={pickerClosing}
+          onClose={() => setPicker(null)}
+          onAdded={(count) => {
+            if (count > 0) {
+              setMessage(count === 1 ? '1 foto toegevoegd.' : `${count} foto's toegevoegd.`);
+              onChanged();
+            }
+          }}
+        />
       )}
 
       {barShown &&

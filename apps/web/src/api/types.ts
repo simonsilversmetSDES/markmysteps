@@ -127,6 +127,17 @@ export interface SyncResult {
   hasLocation?: boolean;
 }
 
+/** One of your own Immich photos for a trip's dates that the trip is not
+ *  showing: never looked at (`new`), or left out on purpose (`hidden`). */
+export interface PhotoCandidate {
+  immichAssetId: string;
+  assetType: 'IMAGE' | 'VIDEO';
+  takenAt: string;
+  width: number | null;
+  height: number | null;
+  status: 'new' | 'hidden';
+}
+
 export interface ImportedTripSummary {
   tripId: string;
   title: string;

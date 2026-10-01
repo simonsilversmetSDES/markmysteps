@@ -24,7 +24,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ImmichClientService } from '../immich/immich-client.service';
 import { ImmichConnectionService } from '../immich/immich-connection.service';
 import { GeotagResult, ImmichGeotagService } from '../immich/immich-geotag.service';
-import { ImmichSyncService, SyncResult } from '../immich/immich-sync.service';
+import { Candidate, ImmichSyncService, SyncResult } from '../immich/immich-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripsService } from '../trips/trips.service';
 import { MediaItem, MediaService } from './media.service';
@@ -44,6 +44,22 @@ class RestoreMediaDto {
   @IsString({ each: true })
   @MaxLength(200, { each: true })
   immichAssetIds!: string[];
+}
+
+class PickMediaDto {
+  /** Into the trip. */
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  add!: string[];
+
+  /** Looked at and left out: listed as hidden from now on. */
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  hide!: string[];
 }
 
 interface VideoTokenPayload {
@@ -119,18 +135,82 @@ export class MediaController {
     return this.media.removeFromTrip(tripId, user.sub, dto.ids);
   }
 
-  /** Undo for the above: forget the exclusions and sync them back in. */
+  /** Undo for the above, and "show it after all" from the hidden list. */
   @Post('trips/:tripId/media/restore')
-  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   async restoreMedia(
     @CurrentUser() user: JwtPayload,
     @Param('tripId', ParseUUIDPipe) tripId: string,
     @Body() dto: RestoreMediaDto,
   ): Promise<{ restored: number }> {
-    const cleared = await this.media.clearExclusions(tripId, user.sub, dto.immichAssetIds);
-    if (cleared === 0) return { restored: 0 };
-    const result = await this.sync.syncTrip(tripId);
-    return { restored: result.assetsAdded };
+    const hidden = await this.media.restorableExclusions(tripId, user.sub, dto.immichAssetIds);
+    // Each photo comes back out of its own owner's library.
+    const byUser = new Map<string, string[]>();
+    for (const e of hidden) byUser.set(e.userId, [...(byUser.get(e.userId) ?? []), e.immichAssetId]);
+    let restored = 0;
+    for (const [userId, assetIds] of byUser) {
+      restored += await this.sync.addAssets(tripId, userId, assetIds);
+    }
+    return { restored };
+  }
+
+  /**
+   * The caller's own Immich photos for this trip's dates that the trip is not
+   * showing, for the picker: new ones, and the ones hidden earlier.
+   */
+  @Get('trips/:tripId/media/candidates')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async candidates(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+  ): Promise<Candidate[]> {
+    await this.trips.getForEditor(tripId, user.sub);
+    return this.sync.listCandidates(tripId, user.sub);
+  }
+
+  /** What came out of the picker: these in, those hidden. */
+  @Post('trips/:tripId/media/pick')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  async pick(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Body() dto: PickMediaDto,
+  ): Promise<{ added: number; hidden: number }> {
+    await this.trips.getForEditor(tripId, user.sub);
+    const hidden = await this.sync.hideAssets(tripId, user.sub, dto.hide);
+    const added = await this.sync.addAssets(tripId, user.sub, dto.add);
+    return { added, hidden };
+  }
+
+  /**
+   * A picker thumbnail: a photo that is not in the trip yet, so there is no
+   * media id to go through. Only ever out of the caller's own library, and
+   * only once they are an editor of the trip.
+   */
+  @Get('trips/:tripId/media/candidates/:assetId/thumbnail')
+  @Throttle({ default: { ttl: 60_000, limit: 1200 } })
+  async candidateThumbnail(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Param('assetId', ParseUUIDPipe) assetId: string,
+    @Res() res: ExpressResponse,
+  ): Promise<void> {
+    await this.trips.getForEditor(tripId, user.sub);
+    const credentials = await this.connections.getCredentials(user.sub);
+    if (!credentials) throw new NotFoundException('No Immich connection');
+    const upstream = await this.immich.fetchThumbnail(
+      credentials.serverUrl,
+      credentials.apiKey,
+      assetId,
+      'thumbnail',
+    );
+    res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=86400');
+    if (upstream.body) {
+      Readable.fromWeb(upstream.body as NodeReadableStream).pipe(res);
+    } else {
+      res.end();
+    }
   }
 
   /**

@@ -325,7 +325,8 @@ export function TripSettingsPage() {
       const result = await api<SyncResult>(`/trips/${tripId}/sync`, { method: 'POST' });
       const found = isLocalMode()
         ? `${result.assetsAdded} nieuwe foto's (${result.assetsFound} gevonden)`
-        : `${result.assetsAdded} nieuwe foto's (${result.assetsFound} gevonden, ${result.usersSynced} reiziger${result.usersSynced === 1 ? '' : 's'})`;
+        : // A sync no longer adds photos with a server: they are picked by hand.
+          `${result.assetsFound} foto's in Immich voor deze reisdagen. Kies welke je toont met "Foto's syncen" boven de tijdlijn`;
       // Without ACCESS_MEDIA_LOCATION every photo arrives without coordinates,
       // which is worth saying rather than leaving an empty map.
       setSyncMessage(
@@ -487,9 +488,10 @@ export function TripSettingsPage() {
           <strong>
             {isLocalMode() ? "Foto's koppelen" : "Foto's syncen"}
             <HelpTip>
-              Kijkt {isLocalMode() ? 'in je fotobibliotheek' : 'in Immich'} welke foto&apos;s op de
-              dagen van deze reis genomen zijn en zet die in de tijdlijn. Heeft een foto een
-              locatie, dan komt hij ook op de kaart te staan.
+              {isLocalMode()
+                ? "Kijkt in je fotobibliotheek welke foto's op de dagen van deze reis genomen zijn en zet die in de tijdlijn."
+                : "Werkt de foto's van deze reis bij met Immich. Welke nieuwe foto's je toont, kies je met \"Foto's syncen\" boven de tijdlijn."}{' '}
+              Heeft een foto een locatie, dan komt hij ook op de kaart te staan.
             </HelpTip>
           </strong>
           <span className="muted">

@@ -1,0 +1,160 @@
+/* Choosing which Immich photos the trip shows. A wider sheet than the others:
+   it is a grid of pictures, not a list of rows. */
+.people-sheet.card.picker-sheet {
+  width: min(760px, 100%);
+  /* The action bar is pinned to the bottom of the sheet; the grid scrolls
+     under it rather than ending behind it. */
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+}
+
+.picker-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--paper-sunken);
+}
+
+.picker-tabs button {
+  padding: 0.45rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ink-faint);
+  transition: color 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.picker-tabs button.active {
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-s);
+}
+
+.picker-hint {
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.picker-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 1.5rem 0;
+  font-size: 0.9rem;
+}
+
+.picker-day {
+  padding-top: 0.8rem;
+}
+
+.picker-day-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+
+.picker-day-head h3 {
+  margin: 0;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 4px;
+}
+
+.picker-photo {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--radius-s);
+  background: var(--paper-sunken);
+  cursor: pointer;
+}
+
+.picker-photo .picker-img,
+.picker-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.16s var(--ease), filter 0.16s var(--ease);
+}
+
+.picker-photo.selected img {
+  transform: scale(0.9);
+}
+
+.picker-photo.selected {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* An empty ring until picked, then filled — the same tick as the timeline's. */
+.picker-check {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgb(0 0 0 / 0.25);
+  color: transparent;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  pointer-events: none;
+}
+
+.picker-photo.selected .picker-check {
+  background: var(--accent);
+  color: #fff;
+}
+
+.picker-video {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  pointer-events: none;
+}
+
+.picker-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1rem -0.35rem 0;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 999px;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-l);
+}
+
+.picker-bar-count {
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.picker-confirm {
+  margin-left: auto;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
