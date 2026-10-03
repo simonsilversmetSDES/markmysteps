@@ -175,3 +175,16 @@ export interface TripAccessPreview {
   owner: { id: string; displayName: string; username: string; hasAvatar: boolean };
   status: 'NONE' | 'PENDING' | 'APPROVED' | 'DENIED' | 'MEMBER';
 }
+
+/** A reaction on one photo, from a visitor on the share link or from the trip. */
+export interface PhotoComment {
+  id: string;
+  mediaId: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+  /** Written by somebody on the trip, from the app. */
+  traveller: boolean;
+  /** Only in the app: whether you may take it away (owner, or your own). */
+  canDelete?: boolean;
+}

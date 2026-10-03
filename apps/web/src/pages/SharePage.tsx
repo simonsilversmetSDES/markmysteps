@@ -1,7 +1,7 @@
 import maplibregl, { LngLatBounds, Map as MapLibreMap } from '../lib/mapgl';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import type { MediaItem, RouteCollection } from '../api/types';
+import type { MediaItem, PhotoComment, RouteCollection } from '../api/types';
 import type { PlannedStop } from '../lib/arc';
 import { ArcOverlay, createArcOverlay, drawPlannedStops, groundRuns } from '../lib/mapRoute';
 import { colorForUser, formatDate, formatDateRange, formatDay } from '../lib/colors';
@@ -13,6 +13,7 @@ import { DayNote, TripNote } from '../components/DayNote';
 import { Lightbox } from '../components/Lightbox';
 import { Markdown } from '../components/Markdown';
 import { LogoMark } from '../components/Logo';
+import { CommentFlag, PhotoCommentsAdapter } from '../components/PhotoComments';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { GRID_ZOOM_PREVIEW, useGridZoom } from '../lib/gridZoom';
 import { jumpToDay, StopJump } from '../components/StopJump';
@@ -167,6 +168,9 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
   const [freshOpen, setFreshOpen] = useState(false);
   const [freshShown, freshClosing] = useExit(freshOpen, 220);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  /** Opened from a photo's comment flag: straight onto the conversation. */
+  const [lightboxComments, setLightboxComments] = useState(false);
+  const [comments, setComments] = useState<PhotoComment[]>([]);
   /** Which of the folded sections is open, if any. Closed by default. */
   const [infoTab, setInfoTab] = useState<'info' | 'stops' | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -212,6 +216,40 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     [orderedMedia],
   );
 
+  const commentsByMedia = useMemo(() => {
+    const map = new Map<string, PhotoComment[]>();
+    for (const c of comments) {
+      const list = map.get(c.mediaId);
+      if (list) list.push(c);
+      else map.set(c.mediaId, [c]);
+    }
+    return map;
+  }, [comments]);
+
+  // Visitors have no account: they comment under the name they type.
+  const commentsAdapter = useMemo<PhotoCommentsAdapter>(
+    () => ({
+      byMedia: commentsByMedia,
+      askName: true,
+      post: async (mediaId, body, name) => {
+        const res = await fetch(`/api/share/${slug}/media/${mediaId}/comments`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-share-token': token },
+          body: JSON.stringify({ name, body }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const added = (await res.json()) as PhotoComment;
+        setComments((list) => [...list, added]);
+      },
+    }),
+    [commentsByMedia, slug, token],
+  );
+
+  const openPhoto = (id: string, withComments = false) => {
+    setLightboxComments(withComments);
+    setLightboxIndex(indexOf.get(id) ?? 0);
+  };
+
   useEffect(() => {
     const get = <T,>(path: string): Promise<T> =>
       fetch(`/api/share/${slug}/${path}`, { headers: { 'x-share-token': token } }).then((res) =>
@@ -222,6 +260,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     get<SharedMedia[]>('media').then(setMedia).catch(() => undefined);
     get<TripNote[]>('notes').then(setNotes).catch(() => undefined);
     get<RouteCollection>('route').then(setRoutes).catch(() => undefined);
+    get<PhotoComment[]>('comments').then(setComments).catch(() => undefined);
 
     if (!mapContainerRef.current || mapRef.current) return;
     const container = mapContainerRef.current;
@@ -531,6 +570,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
               zoom: Math.min(map.getZoom() + 2.5, 16),
             });
           } else {
+            setLightboxComments(false);
             setLightboxIndex(indexOf.get(rep.id) ?? 0);
           }
         });
@@ -890,7 +930,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
                       // photo rather than on the top of the day it is in.
                       data-media-id={item.id}
                       role="button"
-                      onClick={() => setLightboxIndex(indexOf.get(item.id) ?? 0)}
+                      onClick={() => openPhoto(item.id)}
                     >
                       <img
                         src={thumb(item.id, gridSize)}
@@ -914,6 +954,10 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
                           <Icon name="play" size={22} />
                         </span>
                       )}
+                      <CommentFlag
+                        count={commentsByMedia.get(item.id)?.length ?? 0}
+                        onOpen={() => openPhoto(item.id, true)}
+                      />
                     </figure>
                   )}
                 </PhotoGrid>
@@ -983,6 +1027,8 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
           videoSrcFor={(item) => videoSrc(item.id)}
           onNavigate={setLightboxIndex}
           onClose={() => setLightboxIndex(null)}
+          comments={commentsAdapter}
+          startWithComments={lightboxComments}
           // The day's own places, for a photo whose coordinate the map cannot
           // put a name to.
           placeFallbackFor={(item) => placeByDay.get(item.takenAt.slice(0, 10)) ?? null}

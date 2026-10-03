@@ -19,6 +19,7 @@ import { isNativeApp, openExternal } from '../lib/native';
 import { savePhoto } from '../lib/photoSave';
 import { cachedImage, decoded, loadImage, preloadImage, retainImage } from './AuthImage';
 import { Icon, IconName } from './Icon';
+import { PhotoCommentsAdapter, PhotoCommentsPanel } from './PhotoComments';
 import './lightbox.css';
 
 /** How the photo is currently framed: a scale plus a translation in CSS pixels. */
@@ -73,6 +74,10 @@ interface LightboxProps {
   srcFor?: (item: MediaItem, size: 'thumbnail' | 'preview' | 'original') => string;
   /** Playback URL for a video, for those same viewers. */
   videoSrcFor?: (item: MediaItem) => string;
+  /** Comments under each photo, when this viewer shows them. */
+  comments?: PhotoCommentsAdapter;
+  /** Open on the comments rather than on the bare photo (the grid's flag). */
+  startWithComments?: boolean;
 }
 
 /**
@@ -93,6 +98,8 @@ export function Lightbox({
   placeFallbackFor,
   srcFor,
   videoSrcFor,
+  comments,
+  startWithComments = false,
 }: LightboxProps) {
   const { user } = useAuth();
   const isPublic = Boolean(srcFor);
@@ -115,6 +122,9 @@ export function Lightbox({
   const fallbackRef = useRef(placeFallbackFor);
   fallbackRef.current = placeFallbackFor;
   const [closing, setClosing] = useState(false);
+  // Stays open while paging: reading what people said about a run of photos
+  // should not take a tap per photo to bring back.
+  const [commentsOpen, setCommentsOpen] = useState(startWithComments);
 
   // ---- Zoom ------------------------------------------------------------
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -383,17 +393,28 @@ export function Lightbox({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
+      // Typing a comment: the arrows move the cursor, not the album.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('input, textarea')) {
+        if (e.key === 'Escape') setCommentsOpen(false);
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (commentsOpen) setCommentsOpen(false);
+        else close();
+        return;
+      }
       if (e.key === 'ArrowLeft' && index > 0) onNavigate(index - 1);
       if (e.key === 'ArrowRight' && index < items.length - 1) onNavigate(index + 1);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, items.length, onClose, onNavigate]);
+  }, [index, items.length, onClose, onNavigate, commentsOpen]);
 
   if (!item) return null;
   const isOwn = !isPublic && item.userId === user?.id;
   const onDevice = isDeviceMediaId(item.id);
+  const commentCount = comments?.byMedia.get(item.id)?.length ?? 0;
 
   const actions: { label: string; icon: IconName; run: () => void }[] = [];
   if (coverTripId && !onDevice) {
@@ -815,6 +836,29 @@ export function Lightbox({
           </span>
         </figcaption>
       </figure>
+
+      {comments && !onDevice && !commentsOpen && (
+        <button
+          type="button"
+          className={`lightbox-comments-btn ${commentCount > 0 ? 'has' : ''}`}
+          aria-label="Reacties"
+          onClick={(e) => {
+            e.stopPropagation();
+            closeMenu();
+            setCommentsOpen(true);
+          }}
+        >
+          <Icon name="comment" size={18} />
+          {commentCount > 0 ? commentCount : 'Reageer'}
+        </button>
+      )}
+      {comments && !onDevice && commentsOpen && (
+        <PhotoCommentsPanel
+          mediaId={item.id}
+          adapter={comments}
+          onClose={() => setCommentsOpen(false)}
+        />
+      )}
     </div>,
     document.body,
   );

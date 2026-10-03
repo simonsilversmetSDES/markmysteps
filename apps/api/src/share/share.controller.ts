@@ -23,6 +23,8 @@ import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { JwtPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PublicCommentDto } from '../comments/comments.controller';
+import { CommentsService, PublicPhotoComment } from '../comments/comments.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ImmichClientService } from '../immich/immich-client.service';
 import { ImmichConnectionService } from '../immich/immich-connection.service';
@@ -135,6 +137,7 @@ export class SharePublicController {
     private readonly prisma: PrismaService,
     private readonly connections: ImmichConnectionService,
     private readonly immich: ImmichClientService,
+    private readonly comments: CommentsService,
   ) {}
 
   @Get(':slug/info')
@@ -388,6 +391,36 @@ export class SharePublicController {
     } else {
       res.end();
     }
+  }
+
+  /**
+   * Every comment on the trip's photos, in one go: the page needs them all to
+   * flag the photos that have some, and a trip's worth is a few dozen lines.
+   */
+  @Get(':slug/comments')
+  async listComments(
+    @Param('slug') slug: string,
+    @Headers('x-share-token') token: string,
+  ): Promise<PublicPhotoComment[]> {
+    const session = await this.requireSession(slug, token);
+    return this.comments.listPublic(session.tripId);
+  }
+
+  /**
+   * A visitor's comment. No account behind it, only the name they typed, so
+   * it is held to a handful a minute; the trip owner can take any of them
+   * away again from the app.
+   */
+  @Post(':slug/media/:id/comments')
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  async addComment(
+    @Param('slug') slug: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-share-token') token: string,
+    @Body() dto: PublicCommentDto,
+  ): Promise<PublicPhotoComment> {
+    const session = await this.requireSession(slug, token);
+    return this.comments.addPublic(session.tripId, id, dto.name, dto.body);
   }
 
   private async requireSession(slug: string, token?: string): Promise<ShareTokenPayload> {

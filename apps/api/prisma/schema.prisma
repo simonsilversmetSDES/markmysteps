@@ -70,6 +70,7 @@ model User {
   accessRequests   TripAccessRequest[] @relation("AccessRequester")
   accessDecisions  TripAccessRequest[] @relation("AccessDecider")
   tripSummaries    TripSummary[]
+  photoComments    PhotoComment[]
 
   @@map("users")
 }
@@ -125,6 +126,7 @@ model Trip {
   accessRequests TripAccessRequest[]
   notifications  Notification[]
   summaries      TripSummary[]
+  photoComments  PhotoComment[]
 
   @@map("trips")
 }
@@ -471,10 +473,36 @@ model MediaRef {
   geom          Unsupported("geometry(Point, 4326)")?
   createdAt     DateTime @default(now())
 
+  comments      PhotoComment[]
+
   @@unique([tripId, userId, immichAssetId])
   @@index([tripId, takenAt])
   @@index([geom], type: Gist)
   @@map("media_refs")
+}
+
+/// A reaction on one photo. Written from the share page by whoever has the
+/// link — no account, just the name they type — or from the app by somebody on
+/// the trip, who answers under their own name. Goes when the photo goes.
+model PhotoComment {
+  id         String   @id @default(uuid()) @db.Uuid
+  tripId     String   @db.Uuid
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  mediaId    String   @db.Uuid
+  media      MediaRef @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  /// Set when somebody on the trip wrote it from the app; null for a visitor
+  /// on the share page. Losing the account keeps the words.
+  userId     String?  @db.Uuid
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// The name as it is shown: typed by the visitor, or the traveller's
+  /// display name at the time of writing.
+  authorName String
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([tripId])
+  @@index([mediaId, createdAt])
+  @@map("photo_comments")
 }
 
 model RefreshToken {

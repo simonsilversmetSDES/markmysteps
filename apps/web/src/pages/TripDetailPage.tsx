@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError } from '../api/client';
-import type { LiveFix, MediaItem, RouteCollection, Trip } from '../api/types';
+import type { LiveFix, MediaItem, PhotoComment, RouteCollection, Trip } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { AuthImage } from '../components/AuthImage';
 import { Markdown } from '../components/Markdown';
@@ -11,6 +11,7 @@ import { DayFilter, type TripDay } from '../components/DayFilter';
 import { Icon } from '../components/Icon';
 import { FastScroll } from '../components/FastScroll';
 import { Lightbox } from '../components/Lightbox';
+import type { PhotoCommentsAdapter } from '../components/PhotoComments';
 import { MapLayersSheet } from '../components/MapLayersSheet';
 import { TrainRouteSheet, type Station } from '../components/TrainRouteSheet';
 import { MembersPanel } from '../components/MembersPanel';
@@ -64,6 +65,8 @@ export function TripDetailPage() {
   const [noAccess, setNoAccess] = useState(false);
   const [addPointMode, setAddPointMode] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  /** Opened from a photo's comment flag: straight onto the conversation. */
+  const [lightboxComments, setLightboxComments] = useState(false);
   /** Picking photos to take out of the trip, and which ones are picked. */
   const [selecting, setSelecting] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<Set<string>>(new Set());
@@ -141,6 +144,7 @@ export function TripDetailPage() {
   const [planPin, setPlanPin] = useState<{ lat: number; lng: number } | null>(null);
   const [stats, setStats] = useState<TripStats | null>(null);
   const [notes, setNotes] = useState<TripNote[]>([]);
+  const [comments, setComments] = useState<PhotoComment[]>([]);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   // Tapping your own dot on the map opens today's raw fixes.
   const [pointsOpen, setPointsOpen] = useState(false);
@@ -435,6 +439,7 @@ export function TripDetailPage() {
     api<PlannedStop[]>(`/trips/${tripId}/stops`).then(setStops).catch(() => undefined);
     api<TripStats>(`/trips/${tripId}/stats`).then(setStats).catch(() => undefined);
     api<TripNote[]>(`/trips/${tripId}/notes`).then(setNotes).catch(() => undefined);
+    api<PhotoComment[]>(`/trips/${tripId}/comments`).then(setComments).catch(() => undefined);
     api<Waypoint[]>(`/trips/${tripId}/points`).then(setWaypoints).catch(() => undefined);
     api<TripDay[]>(`/trips/${tripId}/days`).then(setDays).catch(() => undefined);
   }, [tripId, reloadRoutes]);
@@ -503,6 +508,38 @@ export function TripDetailPage() {
       setNotes((cur) => cur.filter((n) => n.id !== noteId));
     },
     [tripId],
+  );
+
+  const commentsByMedia = useMemo(() => {
+    const map = new Map<string, PhotoComment[]>();
+    for (const c of comments) {
+      const list = map.get(c.mediaId);
+      if (list) list.push(c);
+      else map.set(c.mediaId, [c]);
+    }
+    return map;
+  }, [comments]);
+
+  // In the app you answer under your own name, and may tidy up after visitors.
+  const commentsAdapter = useMemo<PhotoCommentsAdapter>(
+    () => ({
+      byMedia: commentsByMedia,
+      askName: false,
+      post: async (mediaId, body) => {
+        if (!tripId) return;
+        const added = await api<PhotoComment>(`/trips/${tripId}/media/${mediaId}/comments`, {
+          method: 'POST',
+          body: { body },
+        });
+        setComments((list) => [...list, added]);
+      },
+      remove: async (comment) => {
+        if (!tripId) return;
+        await api(`/trips/${tripId}/comments/${comment.id}`, { method: 'DELETE' });
+        setComments((list) => list.filter((c) => c.id !== comment.id));
+      },
+    }),
+    [commentsByMedia, tripId],
   );
 
   useEffect(loadData, [loadData]);
@@ -1301,7 +1338,15 @@ export function TripDetailPage() {
             media={visibleMedia}
             visibleUsers={visibleUsers}
             showOwner={(trip?.members.length ?? 0) > 1}
-            onPhotoClick={(item) => setLightboxIndex(visibleMedia.indexOf(item))}
+            onPhotoClick={(item) => {
+              setLightboxComments(false);
+              setLightboxIndex(visibleMedia.indexOf(item));
+            }}
+            commentCounts={commentsByMedia}
+            onCommentsClick={(item) => {
+              setLightboxComments(true);
+              setLightboxIndex(visibleMedia.indexOf(item));
+            }}
             selecting={selecting}
             selected={selectedMedia}
             // Photos off the phone are not the server's to take out, and a
@@ -1478,6 +1523,8 @@ export function TripDetailPage() {
           index={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
           onNavigate={setLightboxIndex}
+          comments={commentsAdapter}
+          startWithComments={lightboxComments}
           coverTripId={trip?.ownerId === user?.id ? tripId : undefined}
           onCoverSet={loadData}
           stopCoverFor={trip?.ownerId === user?.id ? stopForPhoto : undefined}

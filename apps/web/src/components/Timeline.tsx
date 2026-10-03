@@ -5,6 +5,7 @@ import { GRID_ZOOM_PREVIEW, useGridZoom } from '../lib/gridZoom';
 import { AuthImage } from './AuthImage';
 import { DayNote, TripNote } from './DayNote';
 import { Icon } from './Icon';
+import { CommentFlag } from './PhotoComments';
 import { isPanorama, PhotoGrid } from './PhotoGrid';
 import { StopJump } from './StopJump';
 import { WeatherBadge } from './WeatherBadge';
@@ -28,6 +29,10 @@ interface TimelineProps {
   media: MediaItem[];
   visibleUsers: Set<string>;
   onPhotoClick?: (item: MediaItem) => void;
+  /** Comments per photo id; a photo with any wears a flag. */
+  commentCounts?: Map<string, unknown[]>;
+  /** The flag opens the photo on its comments. */
+  onCommentsClick?: (item: MediaItem) => void;
   /** Owner-color dot only makes sense with multiple travellers. */
   showOwner?: boolean;
   notes?: TripNote[];
@@ -53,6 +58,8 @@ export function Timeline({
   media,
   visibleUsers,
   onPhotoClick,
+  commentCounts,
+  onCommentsClick,
   showOwner = false,
   notes = [],
   canEditNotes = false,
@@ -270,9 +277,17 @@ export function Timeline({
                   alt=""
                   className="timeline-img"
                 />
+                {!selecting && (
+                  <CommentFlag
+                    count={commentCounts?.get(item.id)?.length ?? 0}
+                    onOpen={() => onCommentsClick?.(item)}
+                  />
+                )}
                 {showOwner && manyOwners && (
                   <span
-                    className="timeline-owner"
+                    className={`timeline-owner ${
+                      !selecting && (commentCounts?.get(item.id)?.length ?? 0) > 0 ? 'beside-flag' : ''
+                    }`}
                     style={{ background: colorForUser(item.userId) }}
                   />
                 )}
