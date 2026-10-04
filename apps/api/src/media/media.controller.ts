@@ -193,6 +193,7 @@ export class MediaController {
     @CurrentUser() user: JwtPayload,
     @Param('tripId', ParseUUIDPipe) tripId: string,
     @Param('assetId', ParseUUIDPipe) assetId: string,
+    @Query('size') size: string | undefined,
     @Res() res: ExpressResponse,
   ): Promise<void> {
     await this.trips.getForEditor(tripId, user.sub);
@@ -202,7 +203,9 @@ export class MediaController {
       credentials.serverUrl,
       credentials.apiKey,
       assetId,
-      'thumbnail',
+      // The picker shows two across on a phone, where the small rendition is
+      // a blur; it asks for the preview.
+      size === 'preview' ? 'preview' : 'thumbnail',
     );
     res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=86400');

@@ -242,7 +242,8 @@ export function PhotoPicker({
                       onClick={() => toggle(c.immichAssetId)}
                     >
                       <AuthImage
-                        path={`/trips/${tripId}/media/candidates/${c.immichAssetId}/thumbnail`}
+                        // The preview: the small rendition is a blur at two across.
+                        path={`/trips/${tripId}/media/candidates/${c.immichAssetId}/thumbnail?size=preview`}
                         alt=""
                         className="picker-img"
                       />

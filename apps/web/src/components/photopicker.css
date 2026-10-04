@@ -68,6 +68,13 @@
   gap: 6px;
 }
 
+/* A computer's wider sheet has room for more without them getting small. */
+@media (min-width: 600px) {
+  .picker-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
 .picker-photo {
   position: relative;
   aspect-ratio: 1;
