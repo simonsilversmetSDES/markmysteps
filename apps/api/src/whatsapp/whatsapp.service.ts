@@ -92,6 +92,13 @@ export class WhatsappService {
 
   /** Make sure the session exists and runs; it then asks for a QR scan. */
   async start(): Promise<void> {
+    // A session whose QR codes ran out unscanned sits at FAILED, and WAHA
+    // calls that "already running": start does nothing. Stopped first, it
+    // comes back with fresh codes.
+    const { state } = await this.status();
+    if (state === 'FAILED' || state === 'SCAN_QR_CODE') {
+      await this.raw('POST', `/api/sessions/${this.session}/stop`);
+    }
     const res = await this.raw('POST', `/api/sessions/${this.session}/start`);
     if (res.status === 404) {
       await this.request('POST', '/api/sessions', { name: this.session, start: true });

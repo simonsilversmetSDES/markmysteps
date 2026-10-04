@@ -173,9 +173,13 @@ function WhatsappLink({ canTest }: { canTest: boolean }) {
         </div>
       )}
       <div className="settings-actions">
-        {['STOPPED', 'FAILED'].includes(status.state) && (
-          <button type="button" className="btn btn-primary" onClick={() => void run('/whatsapp/admin/start')}>
-            Koppelen
+        {['STOPPED', 'FAILED', 'SCAN_QR_CODE'].includes(status.state) && (
+          <button
+            type="button"
+            className={status.state === 'SCAN_QR_CODE' ? 'btn' : 'btn btn-primary'}
+            onClick={() => void run('/whatsapp/admin/start')}
+          >
+            {status.state === 'SCAN_QR_CODE' ? 'Nieuwe QR-code' : 'Koppelen'}
           </button>
         )}
         {status.state === 'WORKING' && (
