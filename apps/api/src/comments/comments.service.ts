@@ -9,10 +9,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TripsService } from '../trips/trips.service';
 import { CommentNotifierService } from '../whatsapp/comment-notifier.service';
 
+/** What a comment is about: one photo, or one day's story. */
+export type CommentTarget = { mediaId: string } | { day: string };
+
 /** A comment as the share page sees it: the words and a name, no account ids. */
 export interface PublicPhotoComment {
   id: string;
-  mediaId: string;
+  mediaId: string | null;
+  /** yyyy-mm-dd, for a comment on that day's story. */
+  day: string | null;
   authorName: string;
   body: string;
   createdAt: Date;
@@ -45,7 +50,7 @@ export class CommentsService {
 
   async addPublic(
     tripId: string,
-    mediaId: string,
+    target: CommentTarget,
     name: string,
     body: string,
     visitorId?: string,
@@ -53,9 +58,9 @@ export class CommentsService {
     const authorName = clean(name);
     if (!authorName) throw new BadRequestException('A name is required');
     requireBody(body);
-    await this.requireMedia(tripId, mediaId);
+    const where = await this.requireTarget(tripId, target);
     const row = await this.prisma.photoComment.create({
-      data: { tripId, mediaId, authorName, body: body.trim(), visitorId },
+      data: { tripId, ...where, authorName, body: body.trim(), visitorId },
     });
     this.notifier.notify(row.id);
     return toPublic(row);
@@ -75,18 +80,18 @@ export class CommentsService {
   async add(
     tripId: string,
     userId: string,
-    mediaId: string,
+    target: CommentTarget,
     body: string,
   ): Promise<PhotoCommentView> {
     requireBody(body);
     const trip = await this.trips.getForMember(tripId, userId);
-    await this.requireMedia(tripId, mediaId);
+    const where = await this.requireTarget(tripId, target);
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: { displayName: true },
     });
     const row = await this.prisma.photoComment.create({
-      data: { tripId, mediaId, userId, authorName: user.displayName, body: body.trim() },
+      data: { tripId, ...where, userId, authorName: user.displayName, body: body.trim() },
     });
     this.notifier.notify(row.id);
     return toView(row, userId, trip.ownerId);
@@ -107,9 +112,23 @@ export class CommentsService {
     await this.prisma.photoComment.delete({ where: { id: commentId } });
   }
 
-  private async requireMedia(tripId: string, mediaId: string): Promise<void> {
-    const count = await this.prisma.mediaRef.count({ where: { id: mediaId, tripId } });
-    if (count === 0) throw new NotFoundException('Media not found');
+  /** The photo is on this trip, or the day has a story to talk about. */
+  private async requireTarget(
+    tripId: string,
+    target: CommentTarget,
+  ): Promise<{ mediaId: string } | { day: Date }> {
+    if ('mediaId' in target) {
+      const count = await this.prisma.mediaRef.count({ where: { id: target.mediaId, tripId } });
+      if (count === 0) throw new NotFoundException('Media not found');
+      return { mediaId: target.mediaId };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(target.day) || Number.isNaN(Date.parse(target.day))) {
+      throw new BadRequestException('Invalid day');
+    }
+    const day = new Date(target.day);
+    const count = await this.prisma.tripNote.count({ where: { tripId, day } });
+    if (count === 0) throw new NotFoundException('No story on that day');
+    return { day };
   }
 }
 
@@ -131,6 +150,7 @@ function toPublic(row: PhotoComment): PublicPhotoComment {
   return {
     id: row.id,
     mediaId: row.mediaId,
+    day: row.day ? row.day.toISOString().slice(0, 10) : null,
     authorName: row.authorName,
     body: row.body,
     createdAt: row.createdAt,

@@ -414,7 +414,7 @@ export function Lightbox({
   if (!item) return null;
   const isOwn = !isPublic && item.userId === user?.id;
   const onDevice = isDeviceMediaId(item.id);
-  const commentCount = comments?.byMedia.get(item.id)?.length ?? 0;
+  const commentCount = comments?.list({ mediaId: item.id }).length ?? 0;
 
   const actions: { label: string; icon: IconName; run: () => void }[] = [];
   if (coverTripId && !onDevice) {
@@ -854,7 +854,7 @@ export function Lightbox({
       )}
       {comments && !onDevice && commentsOpen && (
         <PhotoCommentsPanel
-          mediaId={item.id}
+          target={{ mediaId: item.id }}
           adapter={comments}
           onClose={() => setCommentsOpen(false)}
         />

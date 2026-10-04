@@ -52,7 +52,19 @@ export class CommentsController {
     @Param('mediaId', ParseUUIDPipe) mediaId: string,
     @Body() dto: CommentBodyDto,
   ): Promise<PhotoCommentView> {
-    return this.comments.add(tripId, user.sub, mediaId, dto.body);
+    return this.comments.add(tripId, user.sub, { mediaId }, dto.body);
+  }
+
+  /** On a day's story rather than a photo. */
+  @Post('days/:day/comments')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  addOnDay(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Param('day') day: string,
+    @Body() dto: CommentBodyDto,
+  ): Promise<PhotoCommentView> {
+    return this.comments.add(tripId, user.sub, { day }, dto.body);
   }
 
   @Delete('comments/:commentId')

@@ -9,12 +9,34 @@ import './photocomments.css';
  * the link's endpoints, the app knows who you are and may take comments away.
  */
 export interface PhotoCommentsAdapter {
-  /** Every comment on the trip, grouped by photo. */
-  byMedia: Map<string, PhotoComment[]>;
+  /** The comments on one photo or one day, oldest first. */
+  list: (target: CommentTarget) => PhotoComment[];
   /** A visitor has no account, so they type the name the comment goes under. */
   askName: boolean;
-  post: (mediaId: string, body: string, name?: string) => Promise<void>;
+  post: (target: CommentTarget, body: string, name?: string) => Promise<void>;
   remove?: (comment: PhotoComment) => Promise<void>;
+}
+
+/** What a thread is about: one photo, or one day's story. */
+export type CommentTarget = { mediaId: string } | { day: string };
+
+const targetKey = (t: CommentTarget) => ('mediaId' in t ? `m:${t.mediaId}` : `d:${t.day}`);
+
+/** A trip's comments sorted into threads, for the flags and the counts. */
+export function groupComments(comments: PhotoComment[]) {
+  const byMedia = new Map<string, PhotoComment[]>();
+  const byDay = new Map<string, PhotoComment[]>();
+  for (const c of comments) {
+    const map = c.mediaId ? byMedia : byDay;
+    const key = c.mediaId ?? c.day;
+    if (!key) continue;
+    const list = map.get(key);
+    if (list) list.push(c);
+    else map.set(key, [c]);
+  }
+  const list = (t: CommentTarget) =>
+    ('mediaId' in t ? byMedia.get(t.mediaId) : byDay.get(t.day)) ?? [];
+  return { byMedia, byDay, list };
 }
 
 const NAME_KEY = 'mms.commentName';
@@ -62,17 +84,23 @@ export function CommentFlag({ count, onOpen }: { count: number; onOpen?: () => v
   );
 }
 
-/** The comments under one photo in the viewer, with the box to add one. */
+/**
+ * A thread of comments with the box to add one: as a dark sheet over the
+ * photo in the viewer, or inline under a day's story on the page.
+ */
 export function PhotoCommentsPanel({
-  mediaId,
+  target,
   adapter,
   onClose,
+  variant = 'sheet',
 }: {
-  mediaId: string;
+  target: CommentTarget;
   adapter: PhotoCommentsAdapter;
   onClose: () => void;
+  variant?: 'sheet' | 'inline';
 }) {
-  const comments = adapter.byMedia.get(mediaId) ?? [];
+  const comments = adapter.list(target);
+  const key = targetKey(target);
   const [name, setName] = useState(rememberedName);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
@@ -84,13 +112,13 @@ export function PhotoCommentsPanel({
   useEffect(() => {
     setBody('');
     setError(null);
-  }, [mediaId]);
+  }, [key]);
 
   // The newest is at the bottom, next to the box you just wrote it in.
   useEffect(() => {
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;
-  }, [comments.length, mediaId]);
+  }, [comments.length, key]);
 
   const canSend = body.trim().length > 0 && (!adapter.askName || name.trim().length > 0) && !busy;
 
@@ -101,7 +129,7 @@ export function PhotoCommentsPanel({
     setError(null);
     try {
       const typed = adapter.askName ? name.trim() : undefined;
-      await adapter.post(mediaId, body.trim(), typed);
+      await adapter.post(target, body.trim(), typed);
       if (typed) rememberName(typed);
       setBody('');
     } catch (err) {
@@ -126,7 +154,7 @@ export function PhotoCommentsPanel({
 
   return (
     <section
-      className="photo-comments"
+      className={variant === 'inline' ? 'photo-comments inline' : 'photo-comments'}
       aria-label="Reacties"
       // The viewer closes on a tap anywhere outside the photo; this is not
       // outside the photo as far as anybody reading it is concerned.
@@ -142,12 +170,14 @@ export function PhotoCommentsPanel({
               : `${comments.length} reacties`}
         </strong>
         <button type="button" aria-label="Reacties sluiten" onClick={onClose}>
-          <Icon name="chevron-down" size={20} />
+          <Icon name={variant === 'inline' ? 'chevron-up' : 'chevron-down'} size={20} />
         </button>
       </header>
 
       {comments.length === 0 ? (
-        <p className="photo-comments-empty">Nog geen reacties. Schrijf de eerste.</p>
+        variant === 'sheet' && (
+          <p className="photo-comments-empty">Nog geen reacties. Schrijf de eerste.</p>
+        )
       ) : (
         <ol className="photo-comments-list" ref={listRef}>
           {comments.map((c) => (
@@ -211,5 +241,55 @@ export function PhotoCommentsPanel({
         )}
       </form>
     </section>
+  );
+}
+
+/**
+ * Under a day's story: a clear "Reageer" button with the count, and the
+ * thread opening in place underneath it.
+ */
+export function DayComments({
+  day,
+  adapter,
+  startOpen = false,
+}: {
+  day: string;
+  adapter: PhotoCommentsAdapter;
+  startOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  const ref = useRef<HTMLDivElement>(null);
+  const comments = adapter.list({ day });
+  const last = comments[comments.length - 1];
+
+  // Opened from a WhatsApp link: bring it into view.
+  useEffect(() => {
+    if (startOpen) ref.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [startOpen]);
+
+  return (
+    <div className="day-comments" ref={ref}>
+      {open ? (
+        <PhotoCommentsPanel
+          target={{ day }}
+          adapter={adapter}
+          variant="inline"
+          onClose={() => setOpen(false)}
+        />
+      ) : (
+        <>
+          {last && (
+            <p className="day-comment-preview">
+              <strong>{last.authorName}</strong>: {last.body.length > 90 ? `${last.body.slice(0, 90)}…` : last.body}
+            </p>
+          )}
+          <button type="button" className="day-comment-btn" onClick={() => setOpen(true)}>
+            <Icon name="comment" size={15} />
+            Reageer
+            {comments.length > 0 && <span className="day-comment-count">{comments.length}</span>}
+          </button>
+        </>
+      )}
+    </div>
   );
 }

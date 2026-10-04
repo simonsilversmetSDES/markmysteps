@@ -5,7 +5,7 @@ import { GRID_ZOOM_PREVIEW, useGridZoom } from '../lib/gridZoom';
 import { AuthImage } from './AuthImage';
 import { DayNote, TripNote } from './DayNote';
 import { Icon } from './Icon';
-import { CommentFlag } from './PhotoComments';
+import { CommentFlag, DayComments, PhotoCommentsAdapter } from './PhotoComments';
 import { isPanorama, PhotoGrid } from './PhotoGrid';
 import { StopJump } from './StopJump';
 import { WeatherBadge } from './WeatherBadge';
@@ -33,6 +33,10 @@ interface TimelineProps {
   commentCounts?: Map<string, unknown[]>;
   /** The flag opens the photo on its comments. */
   onCommentsClick?: (item: MediaItem) => void;
+  /** Comments on the days' stories: a "Reageer" under each one. */
+  dayComments?: PhotoCommentsAdapter;
+  /** A day whose comments start open (a link from WhatsApp). */
+  openDay?: string | null;
   /** Owner-color dot only makes sense with multiple travellers. */
   showOwner?: boolean;
   notes?: TripNote[];
@@ -60,6 +64,8 @@ export function Timeline({
   onPhotoClick,
   commentCounts,
   onCommentsClick,
+  dayComments,
+  openDay,
   showOwner = false,
   notes = [],
   canEditNotes = false,
@@ -243,6 +249,10 @@ export function Timeline({
                 onDelete={onDeleteNote}
               />
             )}
+          {/* Comments on the day's story, from home and from the trip. */}
+          {dayComments && (notesByDay.get(day)?.length ?? 0) > 0 && editingDay !== day && (
+            <DayComments day={day} adapter={dayComments} startOpen={openDay === day} />
+          )}
           {/* Justified rows rather than a grid of squares: a portrait stays a
               portrait and a panorama stays wide, the way the photos were taken. */}
           <PhotoGrid items={items} className="timeline-grid">

@@ -439,7 +439,22 @@ export class SharePublicController {
     const session = await this.requireSession(slug, token);
     // A visitor who left their number is told when somebody answers.
     const visitor = await this.visitors.byToken(session.tripId, visitorToken);
-    return this.comments.addPublic(session.tripId, id, dto.name, dto.body, visitor?.id);
+    return this.comments.addPublic(session.tripId, { mediaId: id }, dto.name, dto.body, visitor?.id);
+  }
+
+  /** A visitor's comment on a day's story. Same rules as on a photo. */
+  @Post(':slug/days/:day/comments')
+  @Throttle({ default: { ttl: 60_000, limit: 6 } })
+  async addDayComment(
+    @Param('slug') slug: string,
+    @Param('day') day: string,
+    @Headers('x-share-token') token: string,
+    @Headers('x-visitor') visitorToken: string | undefined,
+    @Body() dto: PublicCommentDto,
+  ): Promise<PublicPhotoComment> {
+    const session = await this.requireSession(slug, token);
+    const visitor = await this.visitors.byToken(session.tripId, visitorToken);
+    return this.comments.addPublic(session.tripId, { day }, dto.name, dto.body, visitor?.id);
   }
 
   /**

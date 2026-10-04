@@ -7,6 +7,13 @@ import { WhatsappService } from './whatsapp.service';
 /** A comment quoted in a message is cut short; the link has the rest. */
 const QUOTE_MAX = 300;
 
+const dayName = new Intl.DateTimeFormat('nl-BE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+
 const quote = (body: string) =>
   `"${body.length > QUOTE_MAX ? `${body.slice(0, QUOTE_MAX).trimEnd()}…` : body}"`;
 
@@ -14,7 +21,8 @@ const quote = (body: string) =>
  * Who hears about a comment on WhatsApp.
  *
  * A visitor writes → the travellers who set a WhatsApp number in the app.
- * A traveller answers → the visitors who commented on that same photo and
+ * A traveller answers → the visitors who commented on that same photo (or
+ * day) and
  * left a number, so it reads as a conversation rather than a broadcast.
  */
 @Injectable()
@@ -41,6 +49,12 @@ export class CommentNotifierService {
     });
     if (!comment) return;
     const origin = webOrigin();
+    // What it is about, and the query that opens it on the page.
+    const dayKey = comment.day ? comment.day.toISOString().slice(0, 10) : null;
+    const about = comment.day
+      ? `jullie verhaal van ${dayName.format(comment.day)}`
+      : 'een foto';
+    const open = dayKey ? `dag=${dayKey}` : `foto=${comment.mediaId}`;
 
     if (comment.userId === null) {
       // From the share page: tell the people on the trip.
@@ -53,11 +67,11 @@ export class CommentNotifierService {
         select: { user: { select: { notifyPhone: true } } },
       });
       const text = [
-        `💬 ${comment.authorName} reageerde op een foto in "${comment.trip.title}":`,
+        `💬 ${comment.authorName} reageerde op ${about} in "${comment.trip.title}":`,
         '',
         quote(comment.body),
         '',
-        `Bekijk en antwoord: ${origin}/trips/${comment.tripId}?foto=${comment.mediaId}`,
+        `Bekijk en antwoord: ${origin}/trips/${comment.tripId}?${open}`,
       ].join('\n');
       for (const m of members) this.whatsapp.send(m.user.notifyPhone!, text);
       return;
@@ -68,7 +82,9 @@ export class CommentNotifierService {
       where: {
         tripId: comment.tripId,
         subscribed: true,
-        comments: { some: { mediaId: comment.mediaId } },
+        comments: {
+          some: comment.day ? { day: comment.day } : { mediaId: comment.mediaId },
+        },
       },
       include: { shareLink: { select: { slug: true } } },
     });
@@ -76,11 +92,11 @@ export class CommentNotifierService {
       this.whatsapp.send(
         v.phone,
         [
-          `💬 ${comment.authorName} antwoordde op een foto in "${comment.trip.title}":`,
+          `💬 ${comment.authorName} antwoordde op ${comment.day ? `het verhaal van ${dayName.format(comment.day)}` : 'een foto'} in "${comment.trip.title}":`,
           '',
           quote(comment.body),
           '',
-          `Bekijk het gesprek: ${origin}/s/${v.shareLink.slug}?foto=${comment.mediaId}`,
+          `Bekijk het gesprek: ${origin}/s/${v.shareLink.slug}?${open}`,
           '',
           `Geen berichten meer? ${origin}/api/whatsapp/stop/${v.token}`,
         ].join('\n'),

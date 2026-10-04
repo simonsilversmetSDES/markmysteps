@@ -13,7 +13,12 @@ import { DayNote, TripNote } from '../components/DayNote';
 import { Lightbox } from '../components/Lightbox';
 import { Markdown } from '../components/Markdown';
 import { LogoMark } from '../components/Logo';
-import { CommentFlag, PhotoCommentsAdapter } from '../components/PhotoComments';
+import {
+  CommentFlag,
+  DayComments,
+  groupComments,
+  PhotoCommentsAdapter,
+} from '../components/PhotoComments';
 import {
   alreadyAsked,
   storedVisitor,
@@ -228,23 +233,18 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     [orderedMedia],
   );
 
-  const commentsByMedia = useMemo(() => {
-    const map = new Map<string, PhotoComment[]>();
-    for (const c of comments) {
-      const list = map.get(c.mediaId);
-      if (list) list.push(c);
-      else map.set(c.mediaId, [c]);
-    }
-    return map;
-  }, [comments]);
+  const grouped = useMemo(() => groupComments(comments), [comments]);
+  const commentsByMedia = grouped.byMedia;
 
   // Visitors have no account: they comment under the name they type.
   const commentsAdapter = useMemo<PhotoCommentsAdapter>(
     () => ({
-      byMedia: commentsByMedia,
+      list: grouped.list,
       askName: true,
-      post: async (mediaId, body, name) => {
-        const res = await fetch(`/api/share/${slug}/media/${mediaId}/comments`, {
+      post: async (target, body, name) => {
+        const path =
+          'mediaId' in target ? `media/${target.mediaId}` : `days/${target.day}`;
+        const res = await fetch(`/api/share/${slug}/${path}/comments`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
@@ -259,7 +259,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
         setComments((list) => [...list, added]);
       },
     }),
-    [commentsByMedia, slug, token, visitor],
+    [grouped, slug, token, visitor],
   );
 
   const openPhoto = (id: string, withComments = false) => {
@@ -269,6 +269,8 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
 
   // A WhatsApp message links straight to the photo it is about: ?foto=<id>
   // opens that one on its comments, once the photos are in.
+  // ?dag=<yyyy-mm-dd> does the same for the comments on a day's story.
+  const [openDay] = useState(() => new URLSearchParams(window.location.search).get('dag'));
   const deepLinked = useRef(false);
   useEffect(() => {
     if (deepLinked.current || orderedMedia.length === 0) return;
@@ -303,7 +305,10 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
           }
         })
         .catch(() => undefined);
-    } else if (!alreadyAsked(slug) && !new URLSearchParams(window.location.search).has('foto')) {
+    } else if (
+      !alreadyAsked(slug) &&
+      !/[?&](foto|dag)=/.test(window.location.search)
+    ) {
       // Not over the top of the page the moment it opens: a beat to see
       // what they came for first.
       window.setTimeout(() => setSignupOpen(true), 1200);
@@ -965,7 +970,14 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
                   </span>
                 </h3>
                 {notesByDay.has(entry.date) && (
-                  <DayNote day={entry.date} notes={notesByDay.get(entry.date)!} canEdit={false} />
+                  <>
+                    <DayNote day={entry.date} notes={notesByDay.get(entry.date)!} canEdit={false} />
+                    <DayComments
+                      day={entry.date}
+                      adapter={commentsAdapter}
+                      startOpen={openDay === entry.date}
+                    />
+                  </>
                 )}
                 {/* Justified rows, same as the app: each photo keeps its own
                     shape instead of being cropped into a square. */}

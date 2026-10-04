@@ -490,15 +490,20 @@ model MediaRef {
   @@map("media_refs")
 }
 
-/// A reaction on one photo. Written from the share page by whoever has the
+/// A reaction on one photo, or on one day's story. Written from the share page by whoever has the
 /// link — no account, just the name they type — or from the app by somebody on
 /// the trip, who answers under their own name. Goes when the photo goes.
 model PhotoComment {
   id         String   @id @default(uuid()) @db.Uuid
   tripId     String   @db.Uuid
   trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  mediaId    String   @db.Uuid
-  media      MediaRef @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  /// The photo it is about — or null, when it is about a day's story.
+  mediaId    String?   @db.Uuid
+  media      MediaRef? @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  /// The day whose story it is about (exactly one of mediaId and day is set).
+  /// Keyed on the day rather than on a note: a day can carry notes from
+  /// several travellers, and rewriting one must not lose the conversation.
+  day        DateTime? @db.Date
   /// Set when somebody on the trip wrote it from the app; null for a visitor
   /// on the share page. Losing the account keeps the words.
   userId     String?  @db.Uuid
@@ -515,6 +520,7 @@ model PhotoComment {
 
   @@index([tripId])
   @@index([mediaId, createdAt])
+  @@index([tripId, day])
   @@map("photo_comments")
 }
 

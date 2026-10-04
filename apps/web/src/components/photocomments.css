@@ -219,3 +219,106 @@
   background: var(--accent);
   color: #fff;
 }
+
+/* The same thread, under a day's story on the page: light, in the flow. */
+.photo-comments.inline {
+  position: static;
+  transform: none;
+  width: auto;
+  max-height: none;
+  margin-top: 0.5rem;
+  padding: 0.7rem 0.9rem 0.85rem;
+  border-radius: var(--radius-m);
+  background: var(--paper-sunken);
+  backdrop-filter: none;
+  color: var(--ink);
+  box-shadow: none;
+  animation: fadeIn 0.2s ease;
+}
+
+.photo-comments.inline .photo-comments-head button {
+  color: var(--ink-soft);
+}
+
+.photo-comments.inline .photo-comments-list {
+  max-height: 22rem;
+}
+
+.photo-comments.inline .photo-comments-list li {
+  border-top-color: var(--line);
+}
+
+.photo-comments.inline .photo-comments-meta {
+  color: var(--ink-faint);
+}
+
+.photo-comments.inline .photo-comments-name {
+  color: var(--ink);
+}
+
+.photo-comments.inline .photo-comments-delete {
+  color: var(--ink-faint);
+}
+
+.photo-comments.inline .photo-comments-form input,
+.photo-comments.inline .photo-comments-form textarea {
+  border-color: var(--line);
+  background: var(--paper-raised);
+  color: var(--ink);
+}
+
+.photo-comments.inline .photo-comments-form input::placeholder,
+.photo-comments.inline .photo-comments-form textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.photo-comments.inline .photo-comments-error {
+  color: var(--accent-ink);
+}
+
+/* "Reageer" under a day's story: plainly a button, not a footnote. */
+.day-comment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.day-comment-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.day-comment-btn .day-comment-count {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+/* Who said what, in short, before the thread is opened. */
+.day-comment-preview {
+  margin: 0.45rem 0 0;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+}
+
+.day-comment-preview strong {
+  color: var(--ink);
+}
+
+/* In line with the day's story above it, clear of the timeline rail. */
+.day-comments {
+  margin: -0.2rem 0 0.9rem 1.7rem;
+}
+
+.day-comments .day-comment-preview {
+  margin-top: 0;
+}

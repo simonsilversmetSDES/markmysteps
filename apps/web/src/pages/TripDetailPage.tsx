@@ -11,7 +11,7 @@ import { DayFilter, type TripDay } from '../components/DayFilter';
 import { Icon } from '../components/Icon';
 import { FastScroll } from '../components/FastScroll';
 import { Lightbox } from '../components/Lightbox';
-import type { PhotoCommentsAdapter } from '../components/PhotoComments';
+import { groupComments, type PhotoCommentsAdapter } from '../components/PhotoComments';
 import { MapLayersSheet } from '../components/MapLayersSheet';
 import { TrainRouteSheet, type Station } from '../components/TrainRouteSheet';
 import { MembersPanel } from '../components/MembersPanel';
@@ -511,24 +511,19 @@ export function TripDetailPage() {
     [tripId],
   );
 
-  const commentsByMedia = useMemo(() => {
-    const map = new Map<string, PhotoComment[]>();
-    for (const c of comments) {
-      const list = map.get(c.mediaId);
-      if (list) list.push(c);
-      else map.set(c.mediaId, [c]);
-    }
-    return map;
-  }, [comments]);
+  const grouped = useMemo(() => groupComments(comments), [comments]);
+  const commentsByMedia = grouped.byMedia;
 
   // In the app you answer under your own name, and may tidy up after visitors.
   const commentsAdapter = useMemo<PhotoCommentsAdapter>(
     () => ({
-      byMedia: commentsByMedia,
+      list: grouped.list,
       askName: false,
-      post: async (mediaId, body) => {
+      post: async (target, body) => {
         if (!tripId) return;
-        const added = await api<PhotoComment>(`/trips/${tripId}/media/${mediaId}/comments`, {
+        const path =
+          'mediaId' in target ? `media/${target.mediaId}` : `days/${target.day}`;
+        const added = await api<PhotoComment>(`/trips/${tripId}/${path}/comments`, {
           method: 'POST',
           body: { body },
         });
@@ -540,7 +535,7 @@ export function TripDetailPage() {
         setComments((list) => list.filter((c) => c.id !== comment.id));
       },
     }),
-    [commentsByMedia, tripId],
+    [grouped, tripId],
   );
 
   useEffect(loadData, [loadData]);
@@ -854,6 +849,8 @@ export function TripDetailPage() {
   // A WhatsApp message about a comment links here with ?foto=<id>: open that
   // photo on its comments as soon as it is in the timeline.
   const fotoParam = useRef(searchParams.get('foto'));
+  // And ?dag=<yyyy-mm-dd> for the comments on a day's story.
+  const [openDay] = useState(() => searchParams.get('dag'));
   useEffect(() => {
     const id = fotoParam.current;
     if (!id) return;
@@ -1360,6 +1357,8 @@ export function TripDetailPage() {
               setLightboxIndex(visibleMedia.indexOf(item));
             }}
             commentCounts={commentsByMedia}
+            dayComments={commentsAdapter}
+            openDay={openDay}
             onCommentsClick={(item) => {
               setLightboxComments(true);
               setLightboxIndex(visibleMedia.indexOf(item));

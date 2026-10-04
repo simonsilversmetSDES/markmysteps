@@ -179,7 +179,10 @@ export interface TripAccessPreview {
 /** A reaction on one photo, from a visitor on the share link or from the trip. */
 export interface PhotoComment {
   id: string;
-  mediaId: string;
+  /** The photo it is about, or null for a comment on a day's story. */
+  mediaId: string | null;
+  /** yyyy-mm-dd: the day whose story it is about. */
+  day: string | null;
   authorName: string;
   body: string;
   createdAt: string;
