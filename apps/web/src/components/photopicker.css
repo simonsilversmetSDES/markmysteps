@@ -60,10 +60,12 @@
   margin: 0;
 }
 
+/* Two across: big enough to tell one shot of the same view from the next,
+   which is the whole of the choice being made here. */
 .picker-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .picker-photo {
