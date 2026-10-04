@@ -71,6 +71,9 @@ model User {
   accessDecisions  TripAccessRequest[] @relation("AccessDecider")
   tripSummaries    TripSummary[]
   photoComments    PhotoComment[]
+  /// Where WhatsApp tells this traveller about comments on their trips, in
+  /// E.164 (+32471…). Null: no WhatsApp.
+  notifyPhone      String?
 
   @@map("users")
 }
@@ -127,6 +130,10 @@ model Trip {
   notifications  Notification[]
   summaries      TripSummary[]
   photoComments  PhotoComment[]
+  visitors       ShareVisitor[]
+  /// When the last "new photos" WhatsApp went out to the visitors; photos
+  /// synced after it are the ones the next update is about.
+  lastUpdateSentAt DateTime?
 
   @@map("trips")
 }
@@ -306,6 +313,8 @@ model ShareLink {
   /// checked; this is only ever read back to the people already on the trip.
   passwordEnc  String?
   createdAt    DateTime  @default(now())
+
+  visitors     ShareVisitor[]
 
   @@index([tripId])
   @@map("share_links")
@@ -498,11 +507,42 @@ model PhotoComment {
   /// display name at the time of writing.
   authorName String
   body       String
+  /// The share-page visitor who wrote it, when they left their number: an
+  /// answer from the trip reaches them on WhatsApp.
+  visitorId  String?       @db.Uuid
+  visitor    ShareVisitor? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
   createdAt  DateTime @default(now())
 
   @@index([tripId])
   @@index([mediaId, createdAt])
   @@map("photo_comments")
+}
+
+/// Somebody at home who opened a share link and left a name and a phone
+/// number to hear about the trip on WhatsApp. Opt-in on the page; goes with
+/// the link it came in through.
+model ShareVisitor {
+  id          String    @id @default(uuid()) @db.Uuid
+  tripId      String    @db.Uuid
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  shareLinkId String    @db.Uuid
+  shareLink   ShareLink @relation(fields: [shareLinkId], references: [id], onDelete: Cascade)
+  name        String
+  /// E.164, e.g. +32471234567.
+  phone       String
+  /// False once they asked to stop (the link in a message, or STOP).
+  subscribed  Boolean   @default(true)
+  /// The visitor's own secret: kept by their browser to say who they are, and
+  /// in every message's unsubscribe link.
+  token       String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  comments    PhotoComment[]
+
+  @@unique([tripId, phone])
+  @@index([phone])
+  @@map("share_visitors")
 }
 
 model RefreshToken {

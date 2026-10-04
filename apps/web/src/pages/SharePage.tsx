@@ -14,6 +14,13 @@ import { Lightbox } from '../components/Lightbox';
 import { Markdown } from '../components/Markdown';
 import { LogoMark } from '../components/Logo';
 import { CommentFlag, PhotoCommentsAdapter } from '../components/PhotoComments';
+import {
+  alreadyAsked,
+  storedVisitor,
+  storeVisitor,
+  VisitorInfo,
+  VisitorSignup,
+} from '../components/VisitorSignup';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { GRID_ZOOM_PREVIEW, useGridZoom } from '../lib/gridZoom';
 import { jumpToDay, StopJump } from '../components/StopJump';
@@ -31,6 +38,8 @@ interface SharedTrip {
   startDate: string;
   endDate: string;
   members: { user: { displayName: string } }[];
+  /** "Simon en Jozefien": who the WhatsApp updates come from. */
+  hosts: string;
   resolvedCoverId: string | null;
   stats: {
     distanceKm: number;
@@ -171,6 +180,9 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
   /** Opened from a photo's comment flag: straight onto the conversation. */
   const [lightboxComments, setLightboxComments] = useState(false);
   const [comments, setComments] = useState<PhotoComment[]>([]);
+  /** Who this browser signed up as for WhatsApp updates, if anyone. */
+  const [visitor, setVisitor] = useState<VisitorInfo | null>(() => storedVisitor(slug));
+  const [signupOpen, setSignupOpen] = useState(false);
   /** Which of the folded sections is open, if any. Closed by default. */
   const [infoTab, setInfoTab] = useState<'info' | 'stops' | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -234,7 +246,12 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
       post: async (mediaId, body, name) => {
         const res = await fetch(`/api/share/${slug}/media/${mediaId}/comments`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-share-token': token },
+          headers: {
+            'content-type': 'application/json',
+            'x-share-token': token,
+            // Signed up: an answer to this comment reaches them on WhatsApp.
+            ...(visitor ? { 'x-visitor': visitor.token } : {}),
+          },
           body: JSON.stringify({ name, body }),
         });
         if (!res.ok) throw new Error(String(res.status));
@@ -242,13 +259,24 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
         setComments((list) => [...list, added]);
       },
     }),
-    [commentsByMedia, slug, token],
+    [commentsByMedia, slug, token, visitor],
   );
 
   const openPhoto = (id: string, withComments = false) => {
     setLightboxComments(withComments);
     setLightboxIndex(indexOf.get(id) ?? 0);
   };
+
+  // A WhatsApp message links straight to the photo it is about: ?foto=<id>
+  // opens that one on its comments, once the photos are in.
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    if (deepLinked.current || orderedMedia.length === 0) return;
+    deepLinked.current = true;
+    const id = new URLSearchParams(window.location.search).get('foto');
+    if (id && indexOf.has(id)) openPhoto(id, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderedMedia, indexOf]);
 
   useEffect(() => {
     const get = <T,>(path: string): Promise<T> =>
@@ -261,6 +289,25 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     get<TripNote[]>('notes').then(setNotes).catch(() => undefined);
     get<RouteCollection>('route').then(setRoutes).catch(() => undefined);
     get<PhotoComment[]>('comments').then(setComments).catch(() => undefined);
+    // A stored sign-up that the travellers removed, or that was made on a link
+    // since revoked, is forgotten; one that still counts keeps the card away.
+    const known = storedVisitor(slug);
+    if (known) {
+      fetch(`/api/share/${slug}/visitor`, {
+        headers: { 'x-share-token': token, 'x-visitor': known.token },
+      })
+        .then((res) => {
+          if (res.status === 404) {
+            storeVisitor(slug, null);
+            setVisitor(null);
+          }
+        })
+        .catch(() => undefined);
+    } else if (!alreadyAsked(slug) && !new URLSearchParams(window.location.search).has('foto')) {
+      // Not over the top of the page the moment it opens: a beat to see
+      // what they came for first.
+      window.setTimeout(() => setSignupOpen(true), 1200);
+    }
 
     if (!mapContainerRef.current || mapRef.current) return;
     const container = mapContainerRef.current;
@@ -965,6 +1012,31 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
             ))}
           </div>
         </section>
+      )}
+
+      <div className="share-updates-wrap">
+        {visitor ? (
+          <p className="share-updates-on">
+            Je krijgt updates via WhatsApp als {visitor.name}.
+          </p>
+        ) : (
+          <button type="button" className="share-updates-btn" onClick={() => setSignupOpen(true)}>
+            <Icon name="bell" size={16} />
+            Updates via WhatsApp
+          </button>
+        )}
+      </div>
+
+      {signupOpen && trip && (
+        <VisitorSignup
+          slug={slug}
+          token={token}
+          hosts={trip.hosts}
+          onDone={(v) => {
+            setSignupOpen(false);
+            if (v) setVisitor(v);
+          }}
+        />
       )}
 
       <footer className="share-footer">

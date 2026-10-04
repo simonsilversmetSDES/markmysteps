@@ -7,6 +7,7 @@ import {
 import type { PhotoComment } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { TripsService } from '../trips/trips.service';
+import { CommentNotifierService } from '../whatsapp/comment-notifier.service';
 
 /** A comment as the share page sees it: the words and a name, no account ids. */
 export interface PublicPhotoComment {
@@ -29,6 +30,7 @@ export class CommentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly trips: TripsService,
+    private readonly notifier: CommentNotifierService,
   ) {}
 
   // ---- Share page: whoever holds the link, by the name they type ----
@@ -46,14 +48,16 @@ export class CommentsService {
     mediaId: string,
     name: string,
     body: string,
+    visitorId?: string,
   ): Promise<PublicPhotoComment> {
     const authorName = clean(name);
     if (!authorName) throw new BadRequestException('A name is required');
     requireBody(body);
     await this.requireMedia(tripId, mediaId);
     const row = await this.prisma.photoComment.create({
-      data: { tripId, mediaId, authorName, body: body.trim() },
+      data: { tripId, mediaId, authorName, body: body.trim(), visitorId },
     });
+    this.notifier.notify(row.id);
     return toPublic(row);
   }
 
@@ -84,6 +88,7 @@ export class CommentsService {
     const row = await this.prisma.photoComment.create({
       data: { tripId, mediaId, userId, authorName: user.displayName, body: body.trim() },
     });
+    this.notifier.notify(row.id);
     return toView(row, userId, trip.ownerId);
   }
 

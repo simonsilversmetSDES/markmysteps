@@ -10,6 +10,7 @@ import { CommentsModule } from './comments/comments.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { SessionThrottlerGuard } from './common/throttler/session-throttler.guard';
 import { validateEnv } from './config/env.validation';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { HealthModule } from './health/health.module';
 import { ImmichModule } from './immich/immich.module';
 import { ImportModule } from './import/import.module';
@@ -52,6 +53,7 @@ import { UsersModule } from './users/users.module';
     SearchModule,
     ShareModule,
     CommentsModule,
+    WhatsappModule,
     SummariesModule,
     AdminModule,
     NotesModule,

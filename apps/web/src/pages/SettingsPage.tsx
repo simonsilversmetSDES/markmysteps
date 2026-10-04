@@ -15,6 +15,7 @@ import { DEFAULT_SERVER_URL } from '../config';
 import { Avatar, bumpAvatar } from '../components/Avatar';
 import { confirmModal } from '../components/confirm';
 import { TrackFiles } from '../components/TrackFiles';
+import { WhatsappSettings } from '../components/WhatsappSettings';
 import { HelpTip } from '../components/HelpTip';
 import { previewInvitePopup } from '../components/InvitePopup';
 import { Icon } from '../components/Icon';
@@ -154,6 +155,7 @@ export function SettingsPage() {
               <LocalModeCard />
               {!isLocalMode() && <ServerSection />}
               <ImmichSection />
+              {!isLocalMode() && <WhatsappSettings />}
             </>
           )}
           {section === 'import' && (

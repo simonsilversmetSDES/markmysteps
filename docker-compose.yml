@@ -79,6 +79,34 @@ services:
           cpus: '0.5'
           memory: 128M
 
+  # WhatsApp Web bridge (WAHA). Sends the "new photos" updates and comment
+  # notifications from a number linked by QR code in the app's settings.
+  # Internal network only: the API is the one thing that talks to it, and it
+  # posts incoming messages (STOP) back to the API's webhook.
+  #
+  # Note: this drives a normal WhatsApp account the way WhatsApp Web does,
+  # which WhatsApp's terms do not allow. Use a spare number, not your own.
+  waha:
+    image: devlikeapro/waha:latest
+    restart: unless-stopped
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WHATSAPP_HOOK_URL: http://api:3000/api/whatsapp/webhook?secret=${WHATSAPP_WEBHOOK_SECRET:-}
+      WHATSAPP_HOOK_EVENTS: message
+      WHATSAPP_RESTART_ALL_SESSIONS: 'True'
+      WAHA_DASHBOARD_ENABLED: 'false'
+      WHATSAPP_SWAGGER_ENABLED: 'false'
+    volumes:
+      - waha-sessions:/app/.sessions
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
   # The page people see while `web` and `api` are being replaced.
   #
   # Bound to the very same host port, which is exactly why it can only run
@@ -104,3 +132,4 @@ networks:
 
 volumes:
   db-data:
+  waha-sessions:

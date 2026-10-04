@@ -17,6 +17,7 @@ import { TrainRouteSheet, type Station } from '../components/TrainRouteSheet';
 import { MembersPanel } from '../components/MembersPanel';
 import { PhotoBook } from '../components/PhotoBook';
 import { SharePanel } from '../components/SharePanel';
+import { VisitorsPanel } from '../components/VisitorsPanel';
 import { SideResizer } from '../components/SideResizer';
 import { PhotoTools } from '../components/PhotoTools';
 import { SummaryPanel } from '../components/SummaryPanel';
@@ -850,6 +851,22 @@ export function TripDetailPage() {
     [media, visibleUsers, day],
   );
 
+  // A WhatsApp message about a comment links here with ?foto=<id>: open that
+  // photo on its comments as soon as it is in the timeline.
+  const fotoParam = useRef(searchParams.get('foto'));
+  useEffect(() => {
+    const id = fotoParam.current;
+    if (!id) return;
+    const at = visibleMedia.findIndex((m) => m.id === id);
+    if (at < 0) return;
+    fotoParam.current = null;
+    setLightboxComments(true);
+    setLightboxIndex(at);
+    const next = new URLSearchParams(searchParams);
+    next.delete('foto');
+    setSearchParams(next, { replace: true });
+  }, [visibleMedia, searchParams, setSearchParams]);
+
   // The map's own set, and its own question: whose photos are ON THE MAP is
   // not whose route is, and not what the timeline below it lists. It can be
   // narrowed to one traveller, or emptied altogether, leaving nothing but the
@@ -1492,6 +1509,7 @@ export function TripDetailPage() {
             {canEdit && tripId && (
               <SharePanel tripId={tripId} ownerView={trip.ownerId === user?.id} />
             )}
+            {canEdit && tripId && <VisitorsPanel tripId={tripId} />}
             {/* Made from what this page already has in hand: the route, the
                 stops and the photos. */}
             <SummaryPanel trip={trip} stops={stops} media={media} routes={routes} />

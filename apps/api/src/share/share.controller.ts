@@ -25,6 +25,7 @@ import type { JwtPayload } from '../auth/auth.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PublicCommentDto } from '../comments/comments.controller';
 import { CommentsService, PublicPhotoComment } from '../comments/comments.service';
+import { hostNames, VisitorsService } from '../whatsapp/visitors.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ImmichClientService } from '../immich/immich-client.service';
 import { ImmichConnectionService } from '../immich/immich-connection.service';
@@ -52,6 +53,16 @@ class UpdateShareDto {
   @IsString()
   @Length(4, 128)
   password?: string | null;
+}
+
+class VisitorDto {
+  @IsString()
+  @Length(1, 60)
+  name: string;
+
+  @IsString()
+  @Length(6, 30)
+  phone: string;
 }
 
 class UnlockShareDto {
@@ -138,6 +149,7 @@ export class SharePublicController {
     private readonly connections: ImmichConnectionService,
     private readonly immich: ImmichClientService,
     private readonly comments: CommentsService,
+    private readonly visitors: VisitorsService,
   ) {}
 
   @Get(':slug/info')
@@ -162,13 +174,14 @@ export class SharePublicController {
         startDate: true,
         endDate: true,
         coverMediaId: true,
+        ownerId: true,
         // Counted on the page, never identified: no account ids go out.
-        members: { select: { user: { select: { displayName: true } } } },
+        members: { select: { role: true, userId: true, user: { select: { displayName: true } } } },
         // Fallback cover: the first photo of the trip.
         mediaRefs: { take: 1, orderBy: { takenAt: 'asc' }, select: { id: true } },
       },
     });
-    const { mediaRefs, coverMediaId, ...rest } = trip;
+    const { mediaRefs, coverMediaId, ownerId, members, ...rest } = trip;
     // The public page shows the same header card as the app: cover, dates and
     // the trip's numbers.
     const [stats, planned] = await Promise.all([
@@ -188,6 +201,9 @@ export class SharePublicController {
       })) > 0;
     return {
       ...rest,
+      members: members.map((m) => ({ user: m.user })),
+      // "Simon en Jozefien": who the WhatsApp updates are from.
+      hosts: hostNames(ownerId, members),
       resolvedCoverId: (coverAlive ? coverMediaId : null) ?? mediaRefs[0]?.id ?? null,
       stats: { ...stats, stops: countStopPlaces(planned) },
     };
@@ -417,10 +433,41 @@ export class SharePublicController {
     @Param('slug') slug: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Headers('x-share-token') token: string,
+    @Headers('x-visitor') visitorToken: string | undefined,
     @Body() dto: PublicCommentDto,
   ): Promise<PublicPhotoComment> {
     const session = await this.requireSession(slug, token);
-    return this.comments.addPublic(session.tripId, id, dto.name, dto.body);
+    // A visitor who left their number is told when somebody answers.
+    const visitor = await this.visitors.byToken(session.tripId, visitorToken);
+    return this.comments.addPublic(session.tripId, id, dto.name, dto.body, visitor?.id);
+  }
+
+  /**
+   * Leave a name and a number for WhatsApp updates. Optional on the page, and
+   * signing up again with the same number is the same visitor.
+   */
+  @Post(':slug/visitor')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  async registerVisitor(
+    @Param('slug') slug: string,
+    @Headers('x-share-token') token: string,
+    @Body() dto: VisitorDto,
+  ): Promise<{ token: string; name: string; phone: string }> {
+    await this.requireSession(slug, token);
+    return this.visitors.register(slug, dto.name, dto.phone);
+  }
+
+  /** Who this browser signed up as, if it still counts. */
+  @Get(':slug/visitor')
+  async visitor(
+    @Param('slug') slug: string,
+    @Headers('x-share-token') token: string,
+    @Headers('x-visitor') visitorToken: string | undefined,
+  ): Promise<{ name: string; subscribed: boolean }> {
+    const session = await this.requireSession(slug, token);
+    const visitor = await this.visitors.byToken(session.tripId, visitorToken);
+    if (!visitor) throw new NotFoundException('Unknown visitor');
+    return { name: visitor.name, subscribed: visitor.subscribed };
   }
 
   private async requireSession(slug: string, token?: string): Promise<ShareTokenPayload> {

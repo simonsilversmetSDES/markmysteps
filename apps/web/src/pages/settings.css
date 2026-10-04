@@ -1896,3 +1896,31 @@
 .admin-search-clear:hover {
   color: var(--ink);
 }
+
+/* WhatsApp: the admin's linking block under the own-number form. */
+.wa-link {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.wa-link h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.wa-qr {
+  display: grid;
+  justify-items: center;
+  gap: 0.6rem;
+  margin: 0.8rem 0;
+  text-align: center;
+}
+
+.wa-qr img {
+  width: min(264px, 100%);
+  aspect-ratio: 1;
+  padding: 10px;
+  border-radius: var(--radius-m);
+  background: #fff;
+}
