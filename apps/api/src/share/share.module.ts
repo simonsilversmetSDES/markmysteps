@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CommentsModule } from '../comments/comments.module';
+import { ReactionsModule } from '../reactions/reactions.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { ImmichModule } from '../immich/immich.module';
 import { StopsModule } from '../stops/stops.module';
@@ -9,7 +10,7 @@ import { ShareManagementController, SharePublicController } from './share.contro
 import { ShareService } from './share.service';
 
 @Module({
-  imports: [TripsModule, CommentsModule, WhatsappModule, TrackingModule, StopsModule, ImmichModule],
+  imports: [TripsModule, CommentsModule, WhatsappModule, ReactionsModule, TrackingModule, StopsModule, ImmichModule],
   controllers: [ShareManagementController, SharePublicController],
   providers: [ShareService],
 })

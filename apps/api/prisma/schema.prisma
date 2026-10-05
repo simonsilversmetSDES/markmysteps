@@ -131,6 +131,7 @@ model Trip {
   summaries      TripSummary[]
   photoComments  PhotoComment[]
   visitors       ShareVisitor[]
+  reactions      PhotoReaction[]
   /// When the last "new photos" WhatsApp went out to the visitors; photos
   /// synced after it are the ones the next update is about.
   lastUpdateSentAt DateTime?
@@ -483,6 +484,7 @@ model MediaRef {
   createdAt     DateTime @default(now())
 
   comments      PhotoComment[]
+  reactions     PhotoReaction[]
 
   @@unique([tripId, userId, immichAssetId])
   @@index([tripId, takenAt])
@@ -549,6 +551,29 @@ model ShareVisitor {
   @@unique([tripId, phone])
   @@index([phone])
   @@map("share_visitors")
+}
+
+/// One emoji on one photo, one per person per photo (picking another swaps
+/// it). A visitor on the share page needs no account or number for this: their
+/// browser keeps a random key, and that key is who they are here.
+model PhotoReaction {
+  id         String   @id @default(uuid()) @db.Uuid
+  tripId     String   @db.Uuid
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  mediaId    String   @db.Uuid
+  media      MediaRef @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  /// heart | laugh | wow | love | clap — the page draws the emoji.
+  kind       String
+  /// "user:<id>" for somebody on the trip, else the visitor's browser key.
+  reactorKey String
+  /// The name, when known (a traveller, or a visitor who signed up).
+  name       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([mediaId, reactorKey])
+  @@index([tripId])
+  @@map("photo_reactions")
 }
 
 model RefreshToken {

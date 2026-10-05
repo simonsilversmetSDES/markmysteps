@@ -12,6 +12,7 @@ import { Icon } from '../components/Icon';
 import { FastScroll } from '../components/FastScroll';
 import { Lightbox } from '../components/Lightbox';
 import { groupComments, type PhotoCommentsAdapter } from '../components/PhotoComments';
+import { useReactions, type ReactionsView } from '../components/PhotoReactions';
 import { MapLayersSheet } from '../components/MapLayersSheet';
 import { TrainRouteSheet, type Station } from '../components/TrainRouteSheet';
 import { MembersPanel } from '../components/MembersPanel';
@@ -536,6 +537,21 @@ export function TripDetailPage() {
       },
     }),
     [grouped, tripId],
+  );
+
+  const putReaction = useCallback(
+    async (mediaId: string, kind: string | null) => {
+      if (!tripId) return;
+      await api(`/trips/${tripId}/media/${mediaId}/reaction`, { method: 'PUT', body: { kind } });
+    },
+    [tripId],
+  );
+  const reactions = useReactions(
+    () =>
+      tripId
+        ? api<ReactionsView>(`/trips/${tripId}/reactions`)
+        : Promise.reject(new Error('no trip')),
+    putReaction,
   );
 
   useEffect(loadData, [loadData]);
@@ -1358,6 +1374,7 @@ export function TripDetailPage() {
             }}
             commentCounts={commentsByMedia}
             dayComments={commentsAdapter}
+            reactionSummary={reactions.summary}
             openDay={openDay}
             onCommentsClick={(item) => {
               setLightboxComments(true);
@@ -1542,6 +1559,7 @@ export function TripDetailPage() {
           onNavigate={setLightboxIndex}
           comments={commentsAdapter}
           startWithComments={lightboxComments}
+          reactions={reactions}
           coverTripId={trip?.ownerId === user?.id ? tripId : undefined}
           onCoverSet={loadData}
           stopCoverFor={trip?.ownerId === user?.id ? stopForPhoto : undefined}

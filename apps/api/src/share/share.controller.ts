@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Patch,
+  Put,
   Headers,
   HttpCode,
   HttpStatus,
@@ -26,6 +27,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PublicCommentDto } from '../comments/comments.controller';
 import { CommentsService, PublicPhotoComment } from '../comments/comments.service';
 import { hostNames, VisitorsService } from '../whatsapp/visitors.service';
+import { SetReactionDto } from '../reactions/reactions.controller';
+import { ReactionsService, ReactionsView } from '../reactions/reactions.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ImmichClientService } from '../immich/immich-client.service';
 import { ImmichConnectionService } from '../immich/immich-connection.service';
@@ -150,6 +153,7 @@ export class SharePublicController {
     private readonly immich: ImmichClientService,
     private readonly comments: CommentsService,
     private readonly visitors: VisitorsService,
+    private readonly reactions: ReactionsService,
   ) {}
 
   @Get(':slug/info')
@@ -455,6 +459,39 @@ export class SharePublicController {
     const session = await this.requireSession(slug, token);
     const visitor = await this.visitors.byToken(session.tripId, visitorToken);
     return this.comments.addPublic(session.tripId, { day }, dto.name, dto.body, visitor?.id);
+  }
+
+  /**
+   * The emoji on the trip's photos, and which ones this browser picked. The
+   * browser's own random key (x-reactor) is who a visitor is here: no account
+   * and no number needed to put a heart on a photo.
+   */
+  @Get(':slug/reactions')
+  async listReactions(
+    @Param('slug') slug: string,
+    @Headers('x-share-token') token: string,
+    @Headers('x-reactor') reactor: string | undefined,
+  ): Promise<ReactionsView> {
+    const session = await this.requireSession(slug, token);
+    return this.reactions.listPublic(session.tripId, reactor);
+  }
+
+  @Put(':slug/media/:id/reaction')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  async setReaction(
+    @Param('slug') slug: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-share-token') token: string,
+    @Headers('x-reactor') reactor: string | undefined,
+    @Headers('x-visitor') visitorToken: string | undefined,
+    @Body() dto: SetReactionDto,
+  ): Promise<void> {
+    const session = await this.requireSession(slug, token);
+    if (!reactor) throw new UnauthorizedException('Missing reactor key');
+    // A visitor who signed up reacts under their name; anyone else, unnamed.
+    const visitor = await this.visitors.byToken(session.tripId, visitorToken);
+    await this.reactions.setPublic(session.tripId, id, reactor, dto.kind ?? null, visitor?.name ?? null);
   }
 
   /**

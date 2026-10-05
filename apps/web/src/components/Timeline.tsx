@@ -6,6 +6,7 @@ import { AuthImage } from './AuthImage';
 import { DayNote, TripNote } from './DayNote';
 import { Icon } from './Icon';
 import { CommentFlag, DayComments, PhotoCommentsAdapter } from './PhotoComments';
+import { ReactionBadge } from './PhotoReactions';
 import { isPanorama, PhotoGrid } from './PhotoGrid';
 import { StopJump } from './StopJump';
 import { WeatherBadge } from './WeatherBadge';
@@ -37,6 +38,8 @@ interface TimelineProps {
   dayComments?: PhotoCommentsAdapter;
   /** A day whose comments start open (a link from WhatsApp). */
   openDay?: string | null;
+  /** Emoji per photo, for the badge on the grid. */
+  reactionSummary?: (mediaId: string) => { kind: string; count: number }[];
   /** Owner-color dot only makes sense with multiple travellers. */
   showOwner?: boolean;
   notes?: TripNote[];
@@ -66,6 +69,7 @@ export function Timeline({
   onCommentsClick,
   dayComments,
   openDay,
+  reactionSummary,
   showOwner = false,
   notes = [],
   canEditNotes = false,
@@ -287,6 +291,9 @@ export function Timeline({
                   alt=""
                   className="timeline-img"
                 />
+                {!selecting && reactionSummary && (
+                  <ReactionBadge summary={reactionSummary(item.id)} />
+                )}
                 {!selecting && (
                   <CommentFlag
                     count={commentCounts?.get(item.id)?.length ?? 0}

@@ -20,6 +20,7 @@ import { savePhoto } from '../lib/photoSave';
 import { cachedImage, decoded, loadImage, preloadImage, retainImage } from './AuthImage';
 import { Icon, IconName } from './Icon';
 import { PhotoCommentsAdapter, PhotoCommentsPanel } from './PhotoComments';
+import { ReactionBar, ReactionsAdapter } from './PhotoReactions';
 import './lightbox.css';
 
 /** How the photo is currently framed: a scale plus a translation in CSS pixels. */
@@ -78,6 +79,8 @@ interface LightboxProps {
   comments?: PhotoCommentsAdapter;
   /** Open on the comments rather than on the bare photo (the grid's flag). */
   startWithComments?: boolean;
+  /** Emoji on each photo, when this viewer shows them. */
+  reactions?: ReactionsAdapter;
 }
 
 /**
@@ -100,6 +103,7 @@ export function Lightbox({
   videoSrcFor,
   comments,
   startWithComments = false,
+  reactions,
 }: LightboxProps) {
   const { user } = useAuth();
   const isPublic = Boolean(srcFor);
@@ -851,6 +855,9 @@ export function Lightbox({
           <Icon name="comment" size={18} />
           {commentCount > 0 ? commentCount : 'Reageer'}
         </button>
+      )}
+      {reactions && !onDevice && !commentsOpen && (
+        <ReactionBar mediaId={item.id} adapter={reactions} />
       )}
       {comments && !onDevice && commentsOpen && (
         <PhotoCommentsPanel

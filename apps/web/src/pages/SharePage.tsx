@@ -19,6 +19,7 @@ import {
   groupComments,
   PhotoCommentsAdapter,
 } from '../components/PhotoComments';
+import { reactorKey, ReactionBadge, ReactionsView, useReactions } from '../components/PhotoReactions';
 import {
   alreadyAsked,
   storedVisitor,
@@ -260,6 +261,35 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
       },
     }),
     [grouped, slug, token, visitor],
+  );
+
+  // Emoji on the photos. No account and no number needed: this browser's own
+  // random key is who the visitor is here.
+  const [reactor] = useState(reactorKey);
+  const putReaction = useCallback(
+    async (mediaId: string, kind: string | null) => {
+      const res = await fetch(`/api/share/${slug}/media/${mediaId}/reaction`, {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          'x-share-token': token,
+          'x-reactor': reactor,
+          ...(visitor ? { 'x-visitor': visitor.token } : {}),
+        },
+        body: JSON.stringify({ kind }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    },
+    [slug, token, reactor, visitor],
+  );
+  const reactions = useReactions(
+    () =>
+      fetch(`/api/share/${slug}/reactions`, {
+        headers: { 'x-share-token': token, 'x-reactor': reactor },
+      }).then((res) =>
+        res.ok ? (res.json() as Promise<ReactionsView>) : Promise.reject(new Error(String(res.status))),
+      ),
+    putReaction,
   );
 
   const openPhoto = (id: string, withComments = false) => {
@@ -1040,6 +1070,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
                           <Icon name="play" size={22} />
                         </span>
                       )}
+                      <ReactionBadge summary={reactions.summary(item.id)} />
                       <CommentFlag
                         count={commentsByMedia.get(item.id)?.length ?? 0}
                         onOpen={() => openPhoto(item.id, true)}
@@ -1140,6 +1171,7 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
           onClose={() => setLightboxIndex(null)}
           comments={commentsAdapter}
           startWithComments={lightboxComments}
+          reactions={reactions}
           // The day's own places, for a photo whose coordinate the map cannot
           // put a name to.
           placeFallbackFor={(item) => placeByDay.get(item.takenAt.slice(0, 10)) ?? null}

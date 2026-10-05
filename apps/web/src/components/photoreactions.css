@@ -1,0 +1,122 @@
+/* On a grid photo: bottom left, small, over the veil. */
+.reaction-badge {
+  position: absolute;
+  z-index: 2;
+  bottom: 6px;
+  left: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.reaction-badge-count {
+  margin-left: 0.15rem;
+  font-weight: 700;
+}
+
+/* In the viewer: bottom left, opposite the comments button. */
+.reaction-bar {
+  position: fixed;
+  left: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 201;
+}
+
+.reaction-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 40px;
+  padding: 0 0.8rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(6px);
+  color: rgb(255 255 255 / 0.92);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.reaction-toggle.has {
+  background: rgb(255 255 255 / 0.18);
+}
+
+.reaction-toggle-emoji {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.reaction-toggle-summary {
+  letter-spacing: 0.05em;
+}
+
+.reaction-picker {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 0.5rem);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgb(20 24 29 / 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.35);
+  animation: reactionPop 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reaction-picker button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 1.6rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+
+.reaction-picker button:hover,
+.reaction-picker button:focus-visible {
+  transform: scale(1.18);
+}
+
+.reaction-picker button.on {
+  background: rgb(255 255 255 / 0.18);
+}
+
+/* Who gave what, for the people on the trip. */
+.reaction-names {
+  flex-basis: 100%;
+  margin: 0.2rem 0.5rem 0.3rem;
+  max-width: 17rem;
+  color: rgb(255 255 255 / 0.7);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.reaction-picker:has(.reaction-names) {
+  border-radius: 20px;
+}
+
+@keyframes reactionPop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reaction-picker {
+    animation: none;
+  }
+}
