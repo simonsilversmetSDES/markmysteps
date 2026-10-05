@@ -160,7 +160,9 @@ export class VisitorsService {
           what,
           ...(extra ? ['', extra] : []),
           '',
-          `Bekijk ze hier: ${origin}/s/${v.shareLink.slug}`,
+          // Their own link: ?v= tells the page who they are, so the sign-up
+          // card stays away and their comments are tied to this number.
+          `Bekijk ze hier: ${origin}/s/${v.shareLink.slug}?v=${v.token}`,
           '',
           `Geen berichten meer? ${origin}/api/whatsapp/stop/${v.token}`,
         ].join('\n'),

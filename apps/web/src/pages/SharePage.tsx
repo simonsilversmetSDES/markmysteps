@@ -293,15 +293,42 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
     get<PhotoComment[]>('comments').then(setComments).catch(() => undefined);
     // A stored sign-up that the travellers removed, or that was made on a link
     // since revoked, is forgotten; one that still counts keeps the card away.
+    // A link out of a WhatsApp message carries the visitor's own token (?v=).
+    // Taken in and then out of the address bar, so a link copied from there
+    // and passed on does not pass on who they are.
+    const params = new URLSearchParams(window.location.search);
+    const fromLink = params.get('v');
+    if (fromLink) {
+      params.delete('v');
+      const rest = params.toString();
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`,
+      );
+      storeVisitor(slug, { token: fromLink, name: '' });
+    }
     const known = storedVisitor(slug);
     if (known) {
       fetch(`/api/share/${slug}/visitor`, {
         headers: { 'x-share-token': token, 'x-visitor': known.token },
       })
-        .then((res) => {
+        .then(async (res) => {
           if (res.status === 404) {
             storeVisitor(slug, null);
             setVisitor(null);
+            return;
+          }
+          if (!res.ok) return;
+          // The name as the travellers have it, for the page and the comment box.
+          const { name } = (await res.json()) as { name: string };
+          const confirmed = { token: known.token, name };
+          storeVisitor(slug, confirmed);
+          setVisitor(confirmed);
+          try {
+            localStorage.setItem('mms.commentName', name);
+          } catch {
+            // Only a convenience.
           }
         })
         .catch(() => undefined);

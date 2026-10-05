@@ -96,7 +96,8 @@ export class CommentNotifierService {
           '',
           quote(comment.body),
           '',
-          `Bekijk het gesprek: ${origin}/s/${v.shareLink.slug}?${open}`,
+          // ?v= is theirs: the page knows who they are without asking again.
+          `Bekijk het gesprek: ${origin}/s/${v.shareLink.slug}?${open}&v=${v.token}`,
           '',
           `Geen berichten meer? ${origin}/api/whatsapp/stop/${v.token}`,
         ].join('\n'),
