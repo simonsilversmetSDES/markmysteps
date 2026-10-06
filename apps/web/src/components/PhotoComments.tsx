@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import type { PhotoComment } from '../api/types';
 import { Icon } from './Icon';
+import { CommentReactions, commentTarget, ReactionsAdapter } from './PhotoReactions';
 import './photocomments.css';
 
 /**
@@ -15,6 +16,8 @@ export interface PhotoCommentsAdapter {
   askName: boolean;
   post: (target: CommentTarget, body: string, name?: string) => Promise<void>;
   remove?: (comment: PhotoComment) => Promise<void>;
+  /** Emoji on each comment, when this page has them. */
+  reactions?: ReactionsAdapter;
 }
 
 /** What a thread is about: one photo, or one day's story. */
@@ -198,6 +201,9 @@ export function PhotoCommentsPanel({
                 )}
               </div>
               <p className="photo-comments-body">{c.body}</p>
+              {adapter.reactions && (
+                <CommentReactions target={commentTarget(c.id)} adapter={adapter.reactions} />
+              )}
             </li>
           ))}
         </ol>

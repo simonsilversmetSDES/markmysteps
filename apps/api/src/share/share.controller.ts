@@ -491,7 +491,37 @@ export class SharePublicController {
     if (!reactor) throw new UnauthorizedException('Missing reactor key');
     // A visitor who signed up reacts under their name; anyone else, unnamed.
     const visitor = await this.visitors.byToken(session.tripId, visitorToken);
-    await this.reactions.setPublic(session.tripId, id, reactor, dto.kind ?? null, visitor?.name ?? null);
+    await this.reactions.setPublic(
+      session.tripId,
+      { mediaId: id },
+      reactor,
+      dto.kind ?? null,
+      visitor?.name ?? null,
+    );
+  }
+
+  /** The same emoji on a comment. */
+  @Put(':slug/comments/:id/reaction')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  async setCommentReaction(
+    @Param('slug') slug: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-share-token') token: string,
+    @Headers('x-reactor') reactor: string | undefined,
+    @Headers('x-visitor') visitorToken: string | undefined,
+    @Body() dto: SetReactionDto,
+  ): Promise<void> {
+    const session = await this.requireSession(slug, token);
+    if (!reactor) throw new UnauthorizedException('Missing reactor key');
+    const visitor = await this.visitors.byToken(session.tripId, visitorToken);
+    await this.reactions.setPublic(
+      session.tripId,
+      { commentId: id },
+      reactor,
+      dto.kind ?? null,
+      visitor?.name ?? null,
+    );
   }
 
   /**

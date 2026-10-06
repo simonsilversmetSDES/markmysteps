@@ -132,6 +132,7 @@ model Trip {
   photoComments  PhotoComment[]
   visitors       ShareVisitor[]
   reactions      PhotoReaction[]
+  commentReactions CommentReaction[]
   /// When the last "new photos" WhatsApp went out to the visitors; photos
   /// synced after it are the ones the next update is about.
   lastUpdateSentAt DateTime?
@@ -518,6 +519,7 @@ model PhotoComment {
   /// answer from the trip reaches them on WhatsApp.
   visitorId  String?       @db.Uuid
   visitor    ShareVisitor? @relation(fields: [visitorId], references: [id], onDelete: SetNull)
+  reactions  CommentReaction[]
   createdAt  DateTime @default(now())
 
   @@index([tripId])
@@ -574,6 +576,25 @@ model PhotoReaction {
   @@unique([mediaId, reactorKey])
   @@index([tripId])
   @@map("photo_reactions")
+}
+
+/// The same five emoji, on a comment instead of a photo. Same rules: one per
+/// person, a visitor known by their browser's key.
+model CommentReaction {
+  id         String       @id @default(uuid()) @db.Uuid
+  tripId     String       @db.Uuid
+  trip       Trip         @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  commentId  String       @db.Uuid
+  comment    PhotoComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  kind       String
+  reactorKey String
+  name       String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([commentId, reactorKey])
+  @@index([tripId])
+  @@map("comment_reactions")
 }
 
 model RefreshToken {

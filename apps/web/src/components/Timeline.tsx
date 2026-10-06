@@ -291,19 +291,24 @@ export function Timeline({
                   alt=""
                   className="timeline-img"
                 />
-                {!selecting && reactionSummary && (
-                  <ReactionBadge summary={reactionSummary(item.id)} />
-                )}
+                {/* Top right, side by side: liked, and talked about. */}
                 {!selecting && (
-                  <CommentFlag
-                    count={commentCounts?.get(item.id)?.length ?? 0}
-                    onOpen={() => onCommentsClick?.(item)}
-                  />
+                  <span className="photo-flags">
+                    {reactionSummary && <ReactionBadge summary={reactionSummary(item.id)} />}
+                    <CommentFlag
+                      count={commentCounts?.get(item.id)?.length ?? 0}
+                      onOpen={() => onCommentsClick?.(item)}
+                    />
+                  </span>
                 )}
                 {showOwner && manyOwners && (
                   <span
                     className={`timeline-owner ${
-                      !selecting && (commentCounts?.get(item.id)?.length ?? 0) > 0 ? 'beside-flag' : ''
+                      !selecting &&
+                      ((commentCounts?.get(item.id)?.length ?? 0) > 0 ||
+                        (reactionSummary?.(item.id).length ?? 0) > 0)
+                        ? 'beside-flag'
+                        : ''
                     }`}
                     style={{ background: colorForUser(item.userId) }}
                   />

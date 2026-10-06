@@ -237,38 +237,16 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
   const grouped = useMemo(() => groupComments(comments), [comments]);
   const commentsByMedia = grouped.byMedia;
 
-  // Visitors have no account: they comment under the name they type.
-  const commentsAdapter = useMemo<PhotoCommentsAdapter>(
-    () => ({
-      list: grouped.list,
-      askName: true,
-      post: async (target, body, name) => {
-        const path =
-          'mediaId' in target ? `media/${target.mediaId}` : `days/${target.day}`;
-        const res = await fetch(`/api/share/${slug}/${path}/comments`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-share-token': token,
-            // Signed up: an answer to this comment reaches them on WhatsApp.
-            ...(visitor ? { 'x-visitor': visitor.token } : {}),
-          },
-          body: JSON.stringify({ name, body }),
-        });
-        if (!res.ok) throw new Error(String(res.status));
-        const added = (await res.json()) as PhotoComment;
-        setComments((list) => [...list, added]);
-      },
-    }),
-    [grouped, slug, token, visitor],
-  );
-
   // Emoji on the photos. No account and no number needed: this browser's own
   // random key is who the visitor is here.
   const [reactor] = useState(reactorKey);
   const putReaction = useCallback(
-    async (mediaId: string, kind: string | null) => {
-      const res = await fetch(`/api/share/${slug}/media/${mediaId}/reaction`, {
+    async (target: string, kind: string | null) => {
+      // A comment is `c:<id>`, anything else is a photo.
+      const path = target.startsWith('c:')
+        ? `comments/${target.slice(2)}`
+        : `media/${target}`;
+      const res = await fetch(`/api/share/${slug}/${path}/reaction`, {
         method: 'PUT',
         headers: {
           'content-type': 'application/json',
@@ -290,6 +268,33 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
         res.ok ? (res.json() as Promise<ReactionsView>) : Promise.reject(new Error(String(res.status))),
       ),
     putReaction,
+  );
+
+  // Visitors have no account: they comment under the name they type.
+  const commentsAdapter = useMemo<PhotoCommentsAdapter>(
+    () => ({
+      list: grouped.list,
+      askName: true,
+      reactions,
+      post: async (target, body, name) => {
+        const path =
+          'mediaId' in target ? `media/${target.mediaId}` : `days/${target.day}`;
+        const res = await fetch(`/api/share/${slug}/${path}/comments`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-share-token': token,
+            // Signed up: an answer to this comment reaches them on WhatsApp.
+            ...(visitor ? { 'x-visitor': visitor.token } : {}),
+          },
+          body: JSON.stringify({ name, body }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const added = (await res.json()) as PhotoComment;
+        setComments((list) => [...list, added]);
+      },
+    }),
+    [grouped, slug, token, visitor, reactions],
   );
 
   const openPhoto = (id: string, withComments = false) => {
@@ -1070,11 +1075,14 @@ function SharedTripView({ slug, token }: { slug: string; token: string }) {
                           <Icon name="play" size={22} />
                         </span>
                       )}
-                      <ReactionBadge summary={reactions.summary(item.id)} />
-                      <CommentFlag
-                        count={commentsByMedia.get(item.id)?.length ?? 0}
-                        onOpen={() => openPhoto(item.id, true)}
-                      />
+                      {/* Top right, side by side: liked, and talked about. */}
+                      <span className="photo-flags">
+                        <ReactionBadge summary={reactions.summary(item.id)} />
+                        <CommentFlag
+                          count={commentsByMedia.get(item.id)?.length ?? 0}
+                          onOpen={() => openPhoto(item.id, true)}
+                        />
+                      </span>
                     </figure>
                   )}
                 </PhotoGrid>

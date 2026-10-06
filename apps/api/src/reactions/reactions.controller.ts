@@ -36,6 +36,18 @@ export class ReactionsController {
     @Param('mediaId', ParseUUIDPipe) mediaId: string,
     @Body() dto: SetReactionDto,
   ): Promise<void> {
-    await this.reactions.setMine(tripId, user.sub, mediaId, dto.kind ?? null);
+    await this.reactions.setMine(tripId, user.sub, { mediaId }, dto.kind ?? null);
+  }
+
+  @Put('comments/:commentId/reaction')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
+  async setOnComment(
+    @CurrentUser() user: JwtPayload,
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Body() dto: SetReactionDto,
+  ): Promise<void> {
+    await this.reactions.setMine(tripId, user.sub, { commentId }, dto.kind ?? null);
   }
 }

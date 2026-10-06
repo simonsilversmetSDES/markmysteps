@@ -1,25 +1,40 @@
-/* On a grid photo: bottom left, small, over the veil. */
-.reaction-badge {
+/* On a grid photo: in the top-right corner next to the comment flag, in the
+   same small dark pill, so liked and talked-about read as one system. */
+.photo-flags {
   position: absolute;
   z-index: 2;
-  bottom: 6px;
-  left: 6px;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.photo-flags:empty {
+  display: none;
+}
+
+.photo-flags .comment-flag {
+  position: static;
+}
+
+.reaction-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.1rem;
-  padding: 0.1rem 0.4rem;
+  padding: 0.15rem 0.45rem 0.15rem 0.35rem;
   border-radius: 999px;
   background: rgb(0 0 0 / 0.55);
   backdrop-filter: blur(4px);
   color: #fff;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   line-height: 1.4;
   pointer-events: none;
 }
 
 .reaction-badge-count {
   margin-left: 0.15rem;
-  font-weight: 700;
 }
 
 /* In the viewer: bottom left, opposite the comments button. */
@@ -119,4 +134,67 @@
   .reaction-picker {
     animation: none;
   }
+}
+
+.reaction-toggle-label {
+  font-size: 0.9rem;
+}
+
+/* Under a comment: small chips, and the row of five when picking. Works on
+   the dark sheet in the viewer and on the light thread under a day alike. */
+.comment-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.comment-reaction-chip,
+.comment-reactions-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  height: 1.7rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  border-color: rgb(127 127 127 / 0.35);
+  color: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.comment-reaction-chip.on {
+  border-color: var(--accent);
+  background: rgb(232 97 60 / 0.15);
+}
+
+.comment-reactions-add {
+  opacity: 0.7;
+}
+
+.comment-reactions.picking button {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  font-size: 1.3rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+
+.comment-reactions.picking button:hover {
+  transform: scale(1.15);
+}
+
+.comment-reactions.picking button.on {
+  background: rgb(127 127 127 / 0.25);
+}
+
+.comment-reactions.picking .comment-reactions-cancel {
+  font-size: 1.1rem;
+  opacity: 0.6;
 }

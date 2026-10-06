@@ -515,11 +515,30 @@ export function TripDetailPage() {
   const grouped = useMemo(() => groupComments(comments), [comments]);
   const commentsByMedia = grouped.byMedia;
 
+  const putReaction = useCallback(
+    async (target: string, kind: string | null) => {
+      if (!tripId) return;
+      const path = target.startsWith('c:')
+        ? `comments/${target.slice(2)}`
+        : `media/${target}`;
+      await api(`/trips/${tripId}/${path}/reaction`, { method: 'PUT', body: { kind } });
+    },
+    [tripId],
+  );
+  const reactions = useReactions(
+    () =>
+      tripId
+        ? api<ReactionsView>(`/trips/${tripId}/reactions`)
+        : Promise.reject(new Error('no trip')),
+    putReaction,
+  );
+
   // In the app you answer under your own name, and may tidy up after visitors.
   const commentsAdapter = useMemo<PhotoCommentsAdapter>(
     () => ({
       list: grouped.list,
       askName: false,
+      reactions,
       post: async (target, body) => {
         if (!tripId) return;
         const path =
@@ -536,22 +555,7 @@ export function TripDetailPage() {
         setComments((list) => list.filter((c) => c.id !== comment.id));
       },
     }),
-    [grouped, tripId],
-  );
-
-  const putReaction = useCallback(
-    async (mediaId: string, kind: string | null) => {
-      if (!tripId) return;
-      await api(`/trips/${tripId}/media/${mediaId}/reaction`, { method: 'PUT', body: { kind } });
-    },
-    [tripId],
-  );
-  const reactions = useReactions(
-    () =>
-      tripId
-        ? api<ReactionsView>(`/trips/${tripId}/reactions`)
-        : Promise.reject(new Error('no trip')),
-    putReaction,
+    [grouped, tripId, reactions],
   );
 
   useEffect(loadData, [loadData]);

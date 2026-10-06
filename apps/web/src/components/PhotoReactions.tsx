@@ -12,21 +12,25 @@ export const REACTIONS = [
 
 const EMOJI: Record<string, string> = Object.fromEntries(REACTIONS.map((r) => [r.kind, r.emoji]));
 
+/** Targets: a photo by its media id, a comment as `c:<comment id>`. */
 export interface ReactionsView {
-  counts: { mediaId: string; kind: string; count: number }[];
+  counts: { target: string; kind: string; count: number }[];
   mine: Record<string, string>;
   names?: Record<string, { kind: string; name: string }[]>;
 }
 
 export interface ReactionsAdapter {
-  /** How many of each on a photo, most first. */
-  summary: (mediaId: string) => { kind: string; count: number }[];
-  /** The viewer's own pick on a photo. */
-  mine: (mediaId: string) => string | null;
+  /** How many of each on a photo or comment, most first. */
+  summary: (target: string) => { kind: string; count: number }[];
+  /** The viewer's own pick. */
+  mine: (target: string) => string | null;
   /** Who reacted, when the server tells (the app, not the share page). */
-  names: (mediaId: string) => { kind: string; name: string }[];
-  set: (mediaId: string, kind: string | null) => Promise<void>;
+  names: (target: string) => { kind: string; name: string }[];
+  set: (target: string, kind: string | null) => Promise<void>;
 }
+
+/** A comment as a reaction target. */
+export const commentTarget = (commentId: string) => `c:${commentId}`;
 
 /** This browser's key on the share page: who a visitor is, for their hearts. */
 export function reactorKey(): string {
@@ -55,7 +59,7 @@ export function reactorKey(): string {
  */
 export function useReactions(
   load: () => Promise<ReactionsView>,
-  put: (mediaId: string, kind: string | null) => Promise<void>,
+  put: (target: string, kind: string | null) => Promise<void>,
 ): ReactionsAdapter {
   const [view, setView] = useState<ReactionsView>({ counts: [], mine: {} });
 
@@ -68,20 +72,20 @@ export function useReactions(
     const map = new Map<string, { kind: string; count: number }[]>();
     for (const c of view.counts) {
       if (c.count <= 0) continue;
-      const list = map.get(c.mediaId) ?? [];
+      const list = map.get(c.target) ?? [];
       list.push({ kind: c.kind, count: c.count });
-      map.set(c.mediaId, list);
+      map.set(c.target, list);
     }
     for (const list of map.values()) list.sort((a, b) => b.count - a.count);
     return map;
   }, [view.counts]);
 
   const set = useCallback(
-    async (mediaId: string, kind: string | null) => {
+    async (target: string, kind: string | null) => {
       const before = view;
-      setView((v) => applyPick(v, mediaId, kind));
+      setView((v) => applyPick(v, target, kind));
       try {
-        await put(mediaId, kind);
+        await put(target, kind);
       } catch {
         setView(before);
       }
@@ -101,19 +105,19 @@ export function useReactions(
 }
 
 /** The counts as they are after one person swaps, adds or drops their pick. */
-function applyPick(v: ReactionsView, mediaId: string, kind: string | null): ReactionsView {
-  const old = v.mine[mediaId] ?? null;
+function applyPick(v: ReactionsView, target: string, kind: string | null): ReactionsView {
+  const old = v.mine[target] ?? null;
   const counts = v.counts.map((c) => ({ ...c }));
   const bump = (k: string, by: number) => {
-    const row = counts.find((c) => c.mediaId === mediaId && c.kind === k);
+    const row = counts.find((c) => c.target === target && c.kind === k);
     if (row) row.count += by;
-    else if (by > 0) counts.push({ mediaId, kind: k, count: by });
+    else if (by > 0) counts.push({ target, kind: k, count: by });
   };
   if (old) bump(old, -1);
   if (kind) bump(kind, 1);
   const mine = { ...v.mine };
-  if (kind) mine[mediaId] = kind;
-  else delete mine[mediaId];
+  if (kind) mine[target] = kind;
+  else delete mine[target];
   return { ...v, counts, mine };
 }
 
@@ -126,7 +130,7 @@ export function ReactionBadge({ summary }: { summary: { kind: string; count: num
       {summary.slice(0, 2).map((r) => (
         <span key={r.kind}>{EMOJI[r.kind]}</span>
       ))}
-      {total > 1 && <span className="reaction-badge-count">{total}</span>}
+      <span className="reaction-badge-count">{total}</span>
     </span>
   );
 }
@@ -181,7 +185,12 @@ export function ReactionBar({ mediaId, adapter }: { mediaId: string; adapter: Re
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className="reaction-toggle-emoji">{mine ? EMOJI[mine] : '🤍'}</span>
+        {mine ? (
+          <span className="reaction-toggle-emoji">{EMOJI[mine]}</span>
+        ) : (
+          // Words, not a hollow heart: it has to read as something to tap.
+          <span className="reaction-toggle-label">Vind ik leuk</span>
+        )}
         {total > 0 && (
           <span className="reaction-toggle-summary">
             {summary
@@ -192,6 +201,78 @@ export function ReactionBar({ mediaId, adapter }: { mediaId: string; adapter: Re
             {total}
           </span>
         )}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Under a comment: what it got, and a small button that opens the five in
+ * the row itself (a popover would be clipped by the scrolling list).
+ */
+export function CommentReactions({ target, adapter }: { target: string; adapter: ReactionsAdapter }) {
+  const [open, setOpen] = useState(false);
+  const mine = adapter.mine(target);
+  const summary = adapter.summary(target);
+  const names = adapter.names(target);
+
+  const pick = (kind: string) => {
+    setOpen(false);
+    void adapter.set(target, kind === mine ? null : kind);
+  };
+
+  if (open) {
+    return (
+      <div className="comment-reactions picking" role="menu">
+        {REACTIONS.map((r) => (
+          <button
+            key={r.kind}
+            type="button"
+            role="menuitem"
+            aria-label={r.label}
+            title={r.label}
+            className={mine === r.kind ? 'on' : ''}
+            onClick={() => pick(r.kind)}
+          >
+            {r.emoji}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="comment-reactions-cancel"
+          aria-label="Sluiten"
+          onClick={() => setOpen(false)}
+        >
+          ×
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="comment-reactions">
+      {summary.map((r) => (
+        <button
+          key={r.kind}
+          type="button"
+          className={`comment-reaction-chip ${mine === r.kind ? 'on' : ''}`}
+          title={names
+            .filter((n) => n.kind === r.kind)
+            .map((n) => n.name)
+            .join(', ')}
+          // A tap on a chip gives (or takes back) that same one.
+          onClick={() => pick(r.kind)}
+        >
+          {EMOJI[r.kind]} {r.count}
+        </button>
+      ))}
+      <button
+        type="button"
+        className="comment-reactions-add"
+        aria-label="Reageer met een emoji"
+        onClick={() => setOpen(true)}
+      >
+        {summary.length === 0 ? 'Vind ik leuk' : '+'}
       </button>
     </div>
   );
